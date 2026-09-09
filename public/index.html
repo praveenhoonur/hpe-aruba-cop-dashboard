@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HPE Aruba COP Dashboard</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>HPE Aruba COP Dashboard</h1>
+    <p class="subtitle">Debug script downloads &amp; log uploads</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Download Debug Script</h2>
+      <p>Download the Kubernetes debug session script used for COP troubleshooting.</p>
+      <a
+        class="btn"
+        href="https://raw.githubusercontent.com/praveenhoonur/cop_debugging/main/k8s-debug-session.sh"
+        download="k8s-debug-session.sh"
+      >
+        ⬇ Download k8s-debug-session.sh
+      </a>
+      <p class="hint">
+        <a href="https://github.com/praveenhoonur/cop_debugging/blob/main/k8s-debug-session.sh" target="_blank" rel="noopener">
+          View source on GitHub
+        </a>
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Upload Log File</h2>
+      <p>Allowed file types: <code>.log</code>, <code>.txt</code>, <code>.tar</code>, <code>.tar.zip</code>, <code>.tar.gz</code></p>
+      <form id="uploadForm">
+        <input type="file" id="logfile" name="logfile" accept=".log,.txt,.tar,.zip,.gz" required />
+        <button type="submit" class="btn">Upload</button>
+      </form>
+      <div id="status" class="status"></div>
+      <div id="analysis" class="analysis"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; 2026 HPE Aruba COP Dashboard</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

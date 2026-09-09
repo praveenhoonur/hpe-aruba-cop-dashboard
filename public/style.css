@@ -1,0 +1,256 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f4f6f9;
+  color: #1a1a2e;
+}
+
+header {
+  background: linear-gradient(135deg, #00b0f0, #0073e6);
+  color: #fff;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.9rem;
+}
+
+.subtitle {
+  margin: 0;
+  opacity: 0.9;
+}
+
+main {
+  max-width: 700px;
+  margin: -1.5rem auto 2rem;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.card h2 {
+  margin-top: 0;
+}
+
+.btn {
+  display: inline-block;
+  background: #0073e6;
+  color: #fff;
+  border: none;
+  padding: 0.7rem 1.2rem;
+  border-radius: 6px;
+  text-decoration: none;
+  cursor: pointer;
+  font-size: 1rem;
+  margin-top: 0.5rem;
+}
+
+.btn:hover {
+  background: #005bb5;
+}
+
+.hint {
+  font-size: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+form {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+input[type="file"] {
+  flex: 1;
+  min-width: 200px;
+}
+
+.status {
+  margin-top: 1rem;
+  font-weight: 600;
+}
+
+.status.success {
+  color: #1a7f37;
+}
+
+.status.error {
+  color: #cf222e;
+}
+
+footer {
+  text-align: center;
+  color: #666;
+  padding: 1rem;
+  font-size: 0.85rem;
+}
+
+.analysis {
+  margin-top: 1.25rem;
+}
+
+.analysis h3 {
+  margin-bottom: 0.75rem;
+}
+
+.summary-card {
+  border: 1px solid #e0e0e0;
+  border-left: 5px solid #999;
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1rem;
+  background: #f8f9fb;
+}
+
+.summary-card.status-error {
+  border-left-color: #cf222e;
+  background: rgba(207, 34, 46, 0.05);
+}
+
+.summary-card.status-warn {
+  border-left-color: #d4a72c;
+  background: rgba(212, 167, 44, 0.07);
+}
+
+.summary-card.status-info {
+  border-left-color: #1a7f37;
+  background: rgba(26, 127, 55, 0.05);
+}
+
+.summary-title {
+  margin: 0 0 0.4rem;
+}
+
+.summary-totals {
+  font-size: 0.85rem;
+  color: #555;
+  margin-bottom: 0.6rem;
+}
+
+.summary-metrics {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.summary-metrics li {
+  font-size: 0.9rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+}
+
+.summary-metrics li.level-error {
+  color: #cf222e;
+  background: rgba(207, 34, 46, 0.08);
+}
+
+.summary-metrics li.level-warn {
+  color: #7a5b00;
+  background: rgba(212, 167, 44, 0.12);
+}
+
+.summary-metrics li.level-info {
+  color: #1a7f37;
+  background: rgba(26, 127, 55, 0.08);
+}
+
+.metric-label {
+  font-weight: 600;
+}
+
+.section {
+  border: 1px solid #e0e0e0;
+  border-left: 4px solid #ccc;
+  border-radius: 6px;
+  margin-bottom: 0.6rem;
+  background: #fafafa;
+  overflow: hidden;
+}
+
+.section summary {
+  cursor: pointer;
+  padding: 0.6rem 0.8rem;
+  font-weight: 600;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.section summary::-webkit-details-marker {
+  display: none;
+}
+
+.section summary::before {
+  content: '\25B6';
+  font-size: 0.7rem;
+  margin-right: 0.25rem;
+  transition: transform 0.15s ease;
+}
+
+.section[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.counts {
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.section-body {
+  padding: 0.5rem 0.8rem 0.8rem 1.2rem;
+  border-top: 1px solid #eee;
+  background: #fff;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.85rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.log-line {
+  padding: 0.1rem 0.3rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 3px;
+}
+
+.log-line.level-error {
+  color: #cf222e;
+  background: rgba(207, 34, 46, 0.08);
+}
+
+.log-line.level-warn {
+  color: #7a5b00;
+  background: rgba(212, 167, 44, 0.12);
+}
+
+.log-line.level-info {
+  color: #1a7f37;
+  background: rgba(26, 127, 55, 0.08);
+}
+
+.log-line.level-neutral {
+  color: #333;
+}
+
