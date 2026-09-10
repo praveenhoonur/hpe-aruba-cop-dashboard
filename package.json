@@ -11,6 +11,7 @@
   "description": "",
   "dependencies": {
     "adm-zip": "^0.6.0",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "multer": "^2.3.0",
     "tar": "^7.5.22"

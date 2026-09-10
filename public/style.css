@@ -227,6 +227,80 @@ footer {
   padding: 10px 14px;
 }
 
+.rca-lookup {
+  margin-top: 10px;
+}
+
+.rca-lookup-btn {
+  background: #0052cc;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rca-lookup-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.rca-lookup-btn:hover:not(:disabled) {
+  background: #003d99;
+}
+
+.rca-lookup-output {
+  margin-top: 8px;
+}
+
+.rca-lookup-query {
+  font-size: 12px;
+  color: #57606a;
+  margin-bottom: 6px;
+  font-style: italic;
+}
+
+.rca-lookup-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.rca-lookup-col {
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.rca-lookup-col h6 {
+  margin: 0 0 6px;
+  color: #0052cc;
+}
+
+.rca-lookup-col ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.rca-lookup-col li {
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.rca-lookup-meta {
+  font-size: 11px;
+  color: #57606a;
+}
+
+.rca-lookup-error {
+  color: #cf222e;
+  font-size: 13px;
+}
+
 .section {
   border: 1px solid #e0e0e0;
   border-left: 4px solid #ccc;

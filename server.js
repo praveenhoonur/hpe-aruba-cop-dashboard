@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -6,6 +7,7 @@ const { analyzeLogFile } = require('./analyzer');
 const { extractArchive, isArchiveFile } = require('./archiveExtractor');
 const { analyzeExtractedArchive } = require('./archiveAnalyzer');
 const { generateCopilotNarrative } = require('./copilotNarrator');
+const { lookupRelatedIssues } = require('./rcaLookup');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -97,6 +99,26 @@ app.post('/api/copilot-narrative', async (req, res) => {
     res.json({ success: true, narrative });
   } catch (err) {
     console.error('Copilot narrative failed:', err);
+    res.status(502).json({ success: false, message: err.message });
+  }
+});
+
+// Takes RCA text (either a Copilot narrative or one of the heuristic RCA
+// entries from archive analysis), extracts a tight search query from its
+// "Likely Root Cause" section, and looks up similar issues/playbooks in
+// on-prem Jira and Confluence in parallel. Each source fails independently
+// so a partial result (e.g. Confluence unreachable) still returns Jira hits.
+app.post('/api/rca-lookup', async (req, res) => {
+  const { rcaText } = req.body || {};
+  if (!rcaText || typeof rcaText !== 'string') {
+    return res.status(400).json({ success: false, message: 'Missing rcaText payload.' });
+  }
+
+  try {
+    const result = await lookupRelatedIssues(rcaText);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('RCA lookup failed:', err);
     res.status(502).json({ success: false, message: err.message });
   }
 });
