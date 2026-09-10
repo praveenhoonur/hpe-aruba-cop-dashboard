@@ -3,21 +3,26 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HPE Aruba COP Dashboard</title>
+<title>HPE Aruba COP Dashboard — Executive Summary</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header>
-    <h1>HPE Aruba COP Dashboard</h1>
-    <p class="subtitle">Debug script downloads &amp; log uploads</p>
+  <header class="app-header">
+    <div class="app-header-inner">
+      <h1>HPE Aruba COP Dashboard</h1>
+      <p class="subtitle">Executive Summary</p>
+    </div>
   </header>
 
-  <main>
+  <main class="page">
     <section class="card">
       <h2>Download Debug Script</h2>
       <p>Download the Kubernetes debug session script used for COP troubleshooting.</p>
       <a
-        class="btn"
+        class="btn btn-outline"
         href="https://raw.githubusercontent.com/praveenhoonur/cop_debugging/main/k8s-debug-session.sh"
         download="k8s-debug-session.sh"
       >
@@ -38,15 +43,16 @@
         <button type="submit" class="btn">Upload</button>
       </form>
       <div id="status" class="status"></div>
-      <div id="analysis" class="analysis"></div>
-      <div id="archiveTabs" class="archive-tabs"></div>
     </section>
+
+    <section id="execSummary" class="exec-summary"></section>
   </main>
 
   <footer>
     <p>&copy; 2026 HPE Aruba COP Dashboard</p>
   </footer>
 
-  <script src="app.js"></script>
+  <script src="shared.js"></script>
+  <script src="exec.js"></script>
 </body>
 </html>

@@ -98,6 +98,25 @@ function buildSummary(sections, content) {
   );
 
   const metrics = [];
+  // Raw numeric fields for chart rendering (health gauge, pod donut, etc.)
+  // kept separate from the human-readable `metrics` list below.
+  const chartData = {
+    nodesReady: null,
+    nodesTotal: null,
+    componentsHealthy: null,
+    componentsTotal: null,
+    podsTotal: null,
+    podsRunning: null,
+    podsNotRunning: null,
+    kubeWarningEvents: null,
+    topRestartCount: null,
+    sectionBreakdown: sections.map((s) => ({
+      title: s.title,
+      error: s.counts.error,
+      warn: s.counts.warn,
+      info: s.counts.info,
+    })),
+  };
 
   const copVersion = extractFirst(content, /COP Version:\s*(.+)/i);
   const copHostVersion = extractFirst(content, /COP Host Software Version:\s*(.+)/i);
@@ -114,9 +133,12 @@ function buildSummary(sections, content) {
   if (nodeSection) {
     const nodeRows = nodeSection.entries.filter((e) => /^\S+\s+(Ready|NotReady)\b/.test(e.text));
     const readyCount = nodeRows.filter((e) => /^\S+\s+Ready\b/.test(e.text)).length;
+    const totalNodes = Number(declaredNodeCount) || nodeRows.length;
+    chartData.nodesReady = readyCount;
+    chartData.nodesTotal = totalNodes;
     metrics.push({
       label: 'Cluster Nodes Ready',
-      value: `${readyCount}/${declaredNodeCount || nodeRows.length}`,
+      value: `${readyCount}/${totalNodes}`,
       level: readyCount < nodeRows.length ? 'error' : 'info',
     });
   }
@@ -125,6 +147,8 @@ function buildSummary(sections, content) {
   if (componentSection) {
     const rows = componentSection.entries.filter((e) => /^\S+\s+(Healthy|Unhealthy)\b/i.test(e.text));
     const unhealthy = rows.filter((e) => !/^\S+\s+Healthy\b/i.test(e.text));
+    chartData.componentsHealthy = rows.length - unhealthy.length;
+    chartData.componentsTotal = rows.length;
     metrics.push({
       label: 'Control Plane Components',
       value: unhealthy.length === 0 ? `All Healthy (${rows.length})` : `${unhealthy.length}/${rows.length} Unhealthy`,
@@ -139,6 +163,9 @@ function buildSummary(sections, content) {
     const running = extractFirst(text, /Running:\s*(\d+)/i);
     const notRunning = extractFirst(text, /Not Running:\s*(\d+)/i);
     if (total) {
+      chartData.podsTotal = Number(total);
+      chartData.podsRunning = Number(running) || 0;
+      chartData.podsNotRunning = Number(notRunning) || 0;
       metrics.push({
         label: 'Pods Running',
         value: `${running || 0}/${total} (${notRunning || 0} not running)`,
@@ -150,6 +177,7 @@ function buildSummary(sections, content) {
   const kubeSystemSection = findSection(sections, 'kube-system');
   if (kubeSystemSection) {
     const warningEvents = kubeSystemSection.entries.filter((e) => /\bWarning\b/.test(e.text)).length;
+    chartData.kubeWarningEvents = warningEvents;
     metrics.push({
       label: 'kube-system Warning Events',
       value: String(warningEvents),
@@ -162,6 +190,7 @@ function buildSummary(sections, content) {
     const topLine = restartSection.entries[0].text;
     const restartMatch = topLine.match(/(\d+)\s*\([^)]*ago\)/);
     const cols = topLine.trim().split(/\s{2,}/);
+    if (restartMatch) chartData.topRestartCount = Number(restartMatch[1]);
     metrics.push({
       label: 'Highest Restart Count',
       value: restartMatch ? `${cols[1] || cols[0]} - ${restartMatch[1]} restarts` : topLine.trim(),
@@ -173,7 +202,7 @@ function buildSummary(sections, content) {
   if (totals.error > 0) overallStatus = 'error';
   else if (totals.warn > 0) overallStatus = 'warn';
 
-  return { status: overallStatus, totals, metrics };
+  return { status: overallStatus, totals, metrics, chartData };
 }
 
 function analyzeContent(content, originalName) {
