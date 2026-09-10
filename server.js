@@ -3,6 +3,8 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { analyzeLogFile } = require('./analyzer');
+const { extractArchive, isArchiveFile } = require('./archiveExtractor');
+const { analyzeExtractedArchive } = require('./archiveAnalyzer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,7 +45,7 @@ const upload = multer({
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.post('/upload', (req, res) => {
-  upload.single('logfile')(req, res, (err) => {
+  upload.single('logfile')(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ success: false, message: err.message });
     }
@@ -52,8 +54,18 @@ app.post('/upload', (req, res) => {
     }
 
     let analysis = null;
+    let archive = null;
+
     try {
-      analysis = analyzeLogFile(req.file.path, req.file.originalname);
+      if (isArchiveFile(req.file.originalname)) {
+        const extractRoot = path.join(uploadDir, 'extracted', path.basename(req.file.path));
+        await extractArchive(req.file.path, req.file.originalname, extractRoot);
+        const { sanityLogAnalysis, tabs } = analyzeExtractedArchive(extractRoot);
+        analysis = sanityLogAnalysis;
+        archive = { tabs };
+      } else {
+        analysis = analyzeLogFile(req.file.path, req.file.originalname);
+      }
     } catch (parseErr) {
       console.error('Analysis failed:', parseErr);
     }
@@ -62,6 +74,7 @@ app.post('/upload', (req, res) => {
       success: true,
       message: `File "${req.file.originalname}" uploaded successfully.`,
       analysis,
+      archive,
     });
   });
 });

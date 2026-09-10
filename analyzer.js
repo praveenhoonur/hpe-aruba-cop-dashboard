@@ -176,13 +176,36 @@ function buildSummary(sections, content) {
   return { status: overallStatus, totals, metrics };
 }
 
-function analyzeLogFile(filePath, originalName) {
-  if (!isCopSanityLog(originalName)) return null;
-  const content = fs.readFileSync(filePath, 'utf8');
+function analyzeContent(content, originalName) {
   const sections = parseSections(content);
   const summary = buildSummary(sections, content);
   const clusterFqdn = extractFirst(content, /Cluster FQDN\s*:\s*(\S+)/i);
   return { fileName: originalName, clusterFqdn, summary, sections };
 }
 
-module.exports = { isCopSanityLog, analyzeLogFile };
+function analyzeLogFile(filePath, originalName) {
+  if (!isCopSanityLog(originalName)) return null;
+  const content = fs.readFileSync(filePath, 'utf8');
+  return analyzeContent(content, originalName);
+}
+
+// Used when scanning inside an extracted archive: any file whose *name*
+// starts with "cop_sanity_logs" (regardless of exact timestamp/extension)
+// should be analyzed the same way as a direct .log upload.
+const COP_SANITY_PREFIX_RE = /^cop_sanity_logs/i;
+
+function isCopSanityLogPrefix(fileName) {
+  return COP_SANITY_PREFIX_RE.test(fileName);
+}
+
+function analyzeSanityLogFile(filePath, originalName) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  return analyzeContent(content, originalName);
+}
+
+module.exports = {
+  isCopSanityLog,
+  isCopSanityLogPrefix,
+  analyzeLogFile,
+  analyzeSanityLogFile,
+};
