@@ -5,6 +5,7 @@ const fs = require('fs');
 const { analyzeLogFile } = require('./analyzer');
 const { extractArchive, isArchiveFile } = require('./archiveExtractor');
 const { analyzeExtractedArchive } = require('./archiveAnalyzer');
+const { generateCopilotNarrative } = require('./copilotNarrator');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,6 +44,7 @@ const upload = multer({
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json({ limit: '2mb' }));
 
 app.post('/upload', (req, res) => {
   upload.single('logfile')(req, res, async (err) => {
@@ -77,6 +79,26 @@ app.post('/upload', (req, res) => {
       archive,
     });
   });
+});
+
+// Opt-in endpoint: takes the already-parsed analysis (summary + sections)
+// produced by /upload and asks the headless Copilot CLI to turn it into a
+// natural-language narrative + likely root cause. Kept separate from
+// /upload because it's slower (can take up to ~1-2 min) and consumes AI
+// credits, so the user explicitly triggers it.
+app.post('/api/copilot-narrative', async (req, res) => {
+  const { analysis } = req.body || {};
+  if (!analysis || typeof analysis !== 'object') {
+    return res.status(400).json({ success: false, message: 'Missing analysis payload.' });
+  }
+
+  try {
+    const narrative = await generateCopilotNarrative(analysis);
+    res.json({ success: true, narrative });
+  } catch (err) {
+    console.error('Copilot narrative failed:', err);
+    res.status(502).json({ success: false, message: err.message });
+  }
 });
 
 app.listen(PORT, () => {

@@ -177,6 +177,56 @@ footer {
   font-weight: 600;
 }
 
+.copilot-narrative {
+  margin: 12px 0 20px;
+}
+
+.copilot-btn {
+  background: #6e40c9;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.copilot-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.copilot-btn:hover:not(:disabled) {
+  background: #5a32a3;
+}
+
+.copilot-output {
+  margin-top: 10px;
+}
+
+.copilot-output h5 {
+  margin: 0 0 6px;
+  color: #6e40c9;
+}
+
+.copilot-output p {
+  background: #faf8ff;
+  border: 1px solid #d8c9f0;
+  border-radius: 6px;
+  padding: 12px 14px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.copilot-output.copilot-error {
+  color: #cf222e;
+  background: rgba(207, 34, 46, 0.08);
+  border: 1px solid rgba(207, 34, 46, 0.3);
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
 .section {
   border: 1px solid #e0e0e0;
   border-left: 4px solid #ccc;

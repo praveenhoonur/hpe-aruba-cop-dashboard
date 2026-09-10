@@ -77,6 +77,7 @@ function renderAnalysis(analysis) {
 
   if (analysis.summary) {
     analysisEl.appendChild(renderSummary(analysis.summary));
+    analysisEl.appendChild(renderCopilotNarrativeSection(analysis));
   }
 
   analysis.sections.forEach((section, idx) => {
@@ -100,6 +101,56 @@ function renderAnalysis(analysis) {
 
     analysisEl.appendChild(wrapper);
   });
+}
+
+// Opt-in AI narrative: sends the already-parsed analysis to the server, which
+// asks the headless Copilot CLI to produce a natural-language summary + RCA.
+// Only triggered on user click since it can take up to ~1-2 minutes.
+function renderCopilotNarrativeSection(analysis) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'copilot-narrative';
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'copilot-btn';
+  button.textContent = '✨ Analyze with Copilot';
+  wrapper.appendChild(button);
+
+  const output = document.createElement('div');
+  output.className = 'copilot-output';
+  wrapper.appendChild(output);
+
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    button.textContent = 'Analyzing... (this can take up to a minute)';
+    output.textContent = '';
+    output.classList.remove('copilot-error');
+
+    try {
+      const res = await fetch('/api/copilot-narrative', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysis }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        output.innerHTML = `<h5>Copilot Analysis</h5><p>${escapeHtml(data.narrative).replace(/\n/g, '<br>')}</p>`;
+        button.textContent = '✨ Re-analyze with Copilot';
+      } else {
+        output.classList.add('copilot-error');
+        output.textContent = `Copilot analysis failed: ${data.message}`;
+        button.textContent = '✨ Analyze with Copilot';
+      }
+    } catch (err) {
+      output.classList.add('copilot-error');
+      output.textContent = `Copilot analysis failed: ${err.message}`;
+      button.textContent = '✨ Analyze with Copilot';
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  return wrapper;
 }
 
 const OVERALL_STATUS_LABEL = {
