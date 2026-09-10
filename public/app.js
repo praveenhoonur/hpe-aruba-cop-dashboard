@@ -67,7 +67,9 @@ function renderAnalysis(analysis) {
   }
 
   const heading = document.createElement('h3');
-  heading.textContent = `Analysis: ${analysis.fileName}`;
+  heading.textContent = analysis.clusterFqdn
+    ? `Health Check of ${analysis.clusterFqdn} Cluster`
+    : `Analysis: ${analysis.fileName}`;
   analysisEl.appendChild(heading);
 
   if (analysis.summary) {

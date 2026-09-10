@@ -181,7 +181,8 @@ function analyzeLogFile(filePath, originalName) {
   const content = fs.readFileSync(filePath, 'utf8');
   const sections = parseSections(content);
   const summary = buildSummary(sections, content);
-  return { fileName: originalName, summary, sections };
+  const clusterFqdn = extractFirst(content, /Cluster FQDN\s*:\s*(\S+)/i);
+  return { fileName: originalName, clusterFqdn, summary, sections };
 }
 
 module.exports = { isCopSanityLog, analyzeLogFile };
