@@ -1,6 +1,7 @@
 const form = document.getElementById('uploadForm');
 const statusEl = document.getElementById('status');
 const execSummaryEl = document.getElementById('execSummary');
+const analysisTabsEl = document.getElementById('analysisTabs');
 const resetBtn = document.getElementById('resetBtn');
 const ALLOWED = ['.log', '.txt', '.tar', '.tar.zip', '.tar.gz', '.zip', '.gz'];
 
@@ -8,6 +9,7 @@ let lastAnalysis = null;
 let lastArchive = null;
 let gaugeChart = null;
 let podChart = null;
+const breakdownChartHolder = {};
 
 function hasAllowedExtension(name) {
   const lower = name.toLowerCase();
@@ -68,6 +70,7 @@ resetBtn.addEventListener('click', () => {
   statusEl.textContent = '';
   statusEl.className = 'status';
   execSummaryEl.innerHTML = '';
+  analysisTabsEl.innerHTML = '';
   lastAnalysis = null;
   lastArchive = null;
   if (gaugeChart) {
@@ -77,6 +80,10 @@ resetBtn.addEventListener('click', () => {
   if (podChart) {
     podChart.destroy();
     podChart = null;
+  }
+  if (breakdownChartHolder.chart) {
+    breakdownChartHolder.chart.destroy();
+    breakdownChartHolder.chart = null;
   }
 });
 
@@ -106,14 +113,15 @@ function computeHealthScore(chartData) {
 
 function renderExecSummary(analysis, archive) {
   execSummaryEl.innerHTML = '';
+  analysisTabsEl.innerHTML = '';
 
   if (!analysis || !analysis.summary) {
     if (archive && Array.isArray(archive.tabs) && archive.tabs.length > 0) {
       const notice = document.createElement('div');
       notice.className = 'card';
       notice.innerHTML = `<p>No cluster health summary file (<code>cop_sanity_logs*</code>) was found in the uploaded archive, but its contents were extracted.</p>`;
-      notice.appendChild(deepDiveButton());
       execSummaryEl.appendChild(notice);
+      analysisTabsEl.appendChild(renderAnalysisTabsSection(analysis, archive, breakdownChartHolder));
     }
     return;
   }
@@ -163,10 +171,13 @@ function renderExecSummary(analysis, archive) {
   // AI Executive Briefing (Copilot narrative)
   execSummaryEl.appendChild(renderCopilotBriefing(analysis));
 
-  // CTA to deep dive
+  // Inline tabbed section: Cluster Health Analysis + Directory Analysis
+  analysisTabsEl.appendChild(renderAnalysisTabsSection(analysis, archive, breakdownChartHolder));
+
+  // Optional full-page view (same content, standalone page/new tab)
   const ctaCard = document.createElement('div');
   ctaCard.className = 'card cta-card';
-  ctaCard.innerHTML = '<p>For section-by-section log details, extracted archive contents, and related Jira/Confluence issues:</p>';
+  ctaCard.innerHTML = '<p>Prefer a standalone page? Open the same detailed analysis in a separate tab:</p>';
   ctaCard.appendChild(deepDiveButton());
   execSummaryEl.appendChild(ctaCard);
 }
