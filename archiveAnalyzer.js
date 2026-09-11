@@ -153,6 +153,18 @@ function analyzeFile(file) {
 // Walks the extracted archive, finds a cop_sanity_logs* file (if any) for the
 // existing cluster-health page, and builds per-directory "tabs" where each
 // file gets its own collapsible entry with a brief summary and heuristic RCA.
+//
+// Tabs are built by grouping files by their *immediate parent directory*,
+// found anywhere in the archive at any nesting depth (not just directly
+// under the extract root). This means an archive shaped like:
+//   coplogs-20260904-193130/
+//     cop_sanity_logs-20260904-193130.log        (handled separately above)
+//     lspodnr/            <- becomes its own tab
+//     lspod_cop_upgrade_tools/  <- becomes its own tab
+//     lspod_ivt/          <- becomes its own tab
+// produces one "Logs Analysis" sub-tab per leaf directory (lspodnr,
+// lspod_cop_upgrade_tools, lspod_ivt), regardless of how many wrapper
+// folders the archive tool added around them.
 function analyzeExtractedArchive(extractRoot) {
   const allFiles = walkFiles(extractRoot, extractRoot);
 
@@ -166,27 +178,44 @@ function analyzeExtractedArchive(extractRoot) {
     }
   }
 
-  const rootEntries = fs.readdirSync(extractRoot, { withFileTypes: true });
-  const topLevelDirs = rootEntries.filter((e) => e.isDirectory()).map((e) => e.name);
-  const rootFiles = allFiles.filter((f) => !f.relPath.includes(path.sep));
+  // The sanity log already has its own dedicated Cluster Health view, so
+  // exclude it from the per-directory tabs to avoid showing it twice.
+  const filesForTabs = allFiles.filter((f) => !sanityCandidate || f.fullPath !== sanityCandidate.fullPath);
+
+  const dirGroups = new Map(); // key: relative directory path ('.' = extract root), value: file[]
+  for (const file of filesForTabs) {
+    const dirRel = path.dirname(file.relPath);
+    if (!dirGroups.has(dirRel)) dirGroups.set(dirRel, []);
+    dirGroups.get(dirRel).push(file);
+  }
+
+  // Disambiguate directories that share the same basename (e.g. two
+  // different parents both containing a "logs" folder) by falling back to
+  // the full relative path for just those colliding names.
+  const nameCounts = new Map();
+  for (const dirRel of dirGroups.keys()) {
+    const base = dirRel === '.' ? 'root' : path.basename(dirRel);
+    nameCounts.set(base, (nameCounts.get(base) || 0) + 1);
+  }
 
   const tabs = [];
-
-  for (const dirName of topLevelDirs) {
-    const dirFiles = allFiles.filter((f) => f.relPath.startsWith(dirName + path.sep));
-    const groups = dirFiles.map((file) => analyzeFile(file));
-    tabs.push({ name: dirName, fileCount: dirFiles.length, groups });
+  for (const [dirRel, files] of dirGroups.entries()) {
+    const base = dirRel === '.' ? 'root' : path.basename(dirRel);
+    const name = nameCounts.get(base) > 1 && dirRel !== '.' ? dirRel.split(path.sep).join(' / ') : base;
+    const groups = files.map((file) => analyzeFile(file));
+    tabs.push({ name, fileCount: files.length, groups });
   }
 
-  // Loose files sitting directly at the archive root (besides the sanity
-  // log, which already has its own dedicated view) get their own tab.
-  const looseRootFiles = rootFiles.filter((f) => !sanityCandidate || f.fullPath !== sanityCandidate.fullPath);
-  if (looseRootFiles.length > 0) {
-    const groups = looseRootFiles.map((file) => analyzeFile(file));
-    tabs.unshift({ name: 'root', fileCount: looseRootFiles.length, groups });
-  }
+  // Keep "root" (loose files directly at the archive root) first, then sort
+  // the rest alphabetically for a stable, predictable tab order.
+  tabs.sort((a, b) => {
+    if (a.name === 'root') return -1;
+    if (b.name === 'root') return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   return { sanityLogAnalysis, tabs };
 }
 
 module.exports = { analyzeExtractedArchive };
+
