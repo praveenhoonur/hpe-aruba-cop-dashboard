@@ -567,6 +567,13 @@ footer {
   word-break: break-word;
 }
 
+.file-summary {
+  font-size: 0.9rem;
+  color: var(--on-surface-secondary);
+  margin-bottom: 0.6rem;
+  font-style: italic;
+}
+
 .rca-heading {
   font-weight: 700;
   margin: 0.5rem 0 0.4rem;

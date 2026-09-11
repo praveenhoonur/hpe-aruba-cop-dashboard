@@ -95,32 +95,25 @@ function readTextSafe(fullPath) {
   }
 }
 
-// Groups files whose names share the same leading alphanumeric token, e.g.
-// "podA-1.log" and "podA-2.log" both group under "podA".
-function groupKey(fileName) {
-  const base = path.basename(fileName);
-  const match = base.match(/^[A-Za-z0-9]+/);
-  return match ? match[0] : base;
-}
-
-function analyzeGroup(groupName, files) {
+function analyzeFile(file) {
   const patternCounts = RCA_PATTERNS.map((p) => ({ pattern: p, count: 0, sample: null }));
+  const levelCounts = { error: 0, warn: 0, info: 0 };
   let totalLines = 0;
 
-  for (const file of files) {
-    const text = readTextSafe(file.fullPath);
-    if (!text) continue;
-    const lines = text.split(/\r?\n/);
-    totalLines += lines.length;
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      for (const entry of patternCounts) {
-        if (entry.pattern.re.test(line)) {
-          entry.count += 1;
-          if (!entry.sample) entry.sample = line.trim().slice(0, 300);
-        }
+  const text = readTextSafe(file.fullPath);
+  const lines = text ? text.split(/\r?\n/) : [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    totalLines += 1;
+    for (const entry of patternCounts) {
+      if (entry.pattern.re.test(line)) {
+        entry.count += 1;
+        if (!entry.sample) entry.sample = line.trim().slice(0, 300);
       }
     }
+    if (/\b(error|crashloopbackoff|imagepullbackoff|fail(ed)?)\b/i.test(line)) levelCounts.error += 1;
+    else if (/\b(warn(ing)?|unhealthy|deprecat(ed|ion))\b/i.test(line)) levelCounts.warn += 1;
+    else levelCounts.info += 1;
   }
 
   const topPatterns = patternCounts
@@ -139,19 +132,27 @@ function analyzeGroup(groupName, files) {
   if (topPatterns.some((p) => p.severity === 'error')) status = 'error';
   else if (topPatterns.some((p) => p.severity === 'warn')) status = 'warn';
 
+  const summary = totalLines === 0
+    ? 'File is empty or unreadable — nothing to analyze.'
+    : status === 'info'
+      ? `Scanned ${totalLines} line${totalLines === 1 ? '' : 's'} — no known failure patterns detected; file appears healthy.`
+      : `Scanned ${totalLines} line${totalLines === 1 ? '' : 's'} — found ${topPatterns.length} notable issue${topPatterns.length === 1 ? '' : 's'} (${levelCounts.error} error-like, ${levelCounts.warn} warning-like line${levelCounts.warn === 1 ? '' : 's'}).`;
+
   return {
-    name: groupName,
-    fileCount: files.length,
-    files: files.map((f) => f.relPath),
+    name: path.basename(file.relPath),
+    fileCount: 1,
+    files: [file.relPath],
     totalLines,
+    counts: levelCounts,
+    summary,
     status,
     topPatterns,
   };
 }
 
 // Walks the extracted archive, finds a cop_sanity_logs* file (if any) for the
-// existing cluster-health page, and builds per-directory "tabs" where files
-// are grouped by shared name prefix with a heuristic RCA per group.
+// existing cluster-health page, and builds per-directory "tabs" where each
+// file gets its own collapsible entry with a brief summary and heuristic RCA.
 function analyzeExtractedArchive(extractRoot) {
   const allFiles = walkFiles(extractRoot, extractRoot);
 
@@ -173,14 +174,7 @@ function analyzeExtractedArchive(extractRoot) {
 
   for (const dirName of topLevelDirs) {
     const dirFiles = allFiles.filter((f) => f.relPath.startsWith(dirName + path.sep));
-    const groupsMap = new Map();
-    for (const file of dirFiles) {
-      const key = groupKey(path.basename(file.relPath));
-      if (!groupsMap.has(key)) groupsMap.set(key, []);
-      groupsMap.get(key).push(file);
-    }
-
-    const groups = Array.from(groupsMap.entries()).map(([key, files]) => analyzeGroup(key, files));
+    const groups = dirFiles.map((file) => analyzeFile(file));
     tabs.push({ name: dirName, fileCount: dirFiles.length, groups });
   }
 
@@ -188,13 +182,7 @@ function analyzeExtractedArchive(extractRoot) {
   // log, which already has its own dedicated view) get their own tab.
   const looseRootFiles = rootFiles.filter((f) => !sanityCandidate || f.fullPath !== sanityCandidate.fullPath);
   if (looseRootFiles.length > 0) {
-    const groupsMap = new Map();
-    for (const file of looseRootFiles) {
-      const key = groupKey(path.basename(file.relPath));
-      if (!groupsMap.has(key)) groupsMap.set(key, []);
-      groupsMap.get(key).push(file);
-    }
-    const groups = Array.from(groupsMap.entries()).map(([key, files]) => analyzeGroup(key, files));
+    const groups = looseRootFiles.map((file) => analyzeFile(file));
     tabs.unshift({ name: 'root', fileCount: looseRootFiles.length, groups });
   }
 

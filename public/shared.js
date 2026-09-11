@@ -173,30 +173,35 @@ function renderDirectoryTabPanel(tab) {
     return container;
   }
 
-  tab.groups.forEach((group, idx) => {
+  tab.groups.forEach((file, idx) => {
     const wrapper = document.createElement('details');
     wrapper.className = 'section';
     if (idx === 0) wrapper.open = true;
 
     const summary = document.createElement('summary');
-    summary.innerHTML = `${escapeHtml(group.name)} <span class="counts">(${group.fileCount} file${group.fileCount === 1 ? '' : 's'})</span>`;
+    const countsLabel = file.counts
+      ? `err:${file.counts.error} warn:${file.counts.warn} info:${file.counts.info}`
+      : `${file.fileCount} file${file.fileCount === 1 ? '' : 's'}`;
+    summary.innerHTML = `<span class="level-${file.status}">${escapeHtml(file.name)}</span> <span class="counts">(${countsLabel})</span>`;
     wrapper.appendChild(summary);
 
     const body = document.createElement('div');
     body.className = 'section-body group-body';
 
-    const fileList = document.createElement('div');
-    fileList.className = 'group-files';
-    fileList.textContent = `Files: ${group.files.join(', ')}`;
-    body.appendChild(fileList);
+    if (file.summary) {
+      const briefSummary = document.createElement('div');
+      briefSummary.className = 'file-summary';
+      briefSummary.textContent = file.summary;
+      body.appendChild(briefSummary);
+    }
 
-    if (group.topPatterns && group.topPatterns.length > 0) {
+    if (file.topPatterns && file.topPatterns.length > 0) {
       const rcaHeading = document.createElement('div');
       rcaHeading.className = 'rca-heading';
       rcaHeading.textContent = 'Analysis & Root Cause';
       body.appendChild(rcaHeading);
 
-      group.topPatterns.forEach((p) => {
+      file.topPatterns.forEach((p) => {
         const rcaItem = document.createElement('div');
         rcaItem.className = `rca-item level-${p.severity}`;
         rcaItem.innerHTML = `<strong>${escapeHtml(p.name)}</strong> — ${p.count} occurrence${p.count === 1 ? '' : 's'} · <em>${SEVERITY_LABEL[p.severity] || ''}</em><br/>${escapeHtml(p.rca)}${p.sample ? `<div class="rca-sample">${escapeHtml(p.sample)}</div>` : ''}`;
@@ -206,7 +211,7 @@ function renderDirectoryTabPanel(tab) {
     } else {
       const ok = document.createElement('div');
       ok.className = 'rca-item level-info';
-      ok.textContent = 'No known failure patterns detected in this group — files appear healthy.';
+      ok.textContent = 'No known failure patterns detected in this file — it appears healthy.';
       body.appendChild(ok);
     }
 
