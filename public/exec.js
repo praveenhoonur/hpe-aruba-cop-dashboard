@@ -171,7 +171,7 @@ function renderExecSummary(analysis, archive) {
   // AI Executive Briefing (Copilot narrative)
   execSummaryEl.appendChild(renderCopilotBriefing(analysis));
 
-  // Inline tabbed section: Cluster Health Analysis + Directory Analysis
+  // Inline tabbed section: Cluster Health Analysis + Logs Analysis
   analysisTabsEl.appendChild(renderAnalysisTabsSection(analysis, archive, breakdownChartHolder));
 
   // Optional full-page view (same content, standalone page/new tab)

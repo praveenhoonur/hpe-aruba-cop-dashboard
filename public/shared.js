@@ -40,7 +40,7 @@ const SEVERITY_LABEL = {
 };
 
 // ---------------------------------------------------------------------------
-// Shared "Cluster Health Analysis" + "Directory Analysis" tab rendering.
+// Shared "Cluster Health Analysis" + "Logs Analysis" tab rendering.
 // Used by both the Executive Dashboard (inline tabs) and the Deep-Dive page.
 // Each caller passes its own chart-instance holder object so charts created
 // here can be destroyed/replaced by the calling page without global state
@@ -218,7 +218,7 @@ function renderDirectoryTabPanel(tab) {
 }
 
 // Generic top-level tab widget with two tabs: "Cluster Health Analysis"
-// (cop_sanity_logs* section details) and "Directory Analysis" (per-directory
+// (cop_sanity_logs* section details) and "Logs Analysis" (per-directory
 // grouped findings from an extracted archive). Either side may be empty,
 // in which case a placeholder message is shown instead.
 function renderAnalysisTabsSection(analysis, archive, chartHolder) {
@@ -238,7 +238,7 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder) {
 
   const tabs = [
     { name: 'Cluster Health Analysis' },
-    { name: 'Directory Analysis' },
+    { name: 'Logs Analysis' },
   ];
 
   tabs.forEach((tab, idx) => {
