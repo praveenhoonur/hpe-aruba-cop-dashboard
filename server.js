@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-const ALLOWED_EXT = ['.log', '.txt', '.tar'];
+const ALLOWED_EXT = ['.log', '.txt', '.tar', '.zip'];
 const ALLOWED_COMPOUND_SUFFIXES = ['.tar.zip', '.tar.gz'];
 
 const storage = multer.diskStorage({
@@ -35,7 +35,7 @@ function fileFilter(req, file, cb) {
   if (isCompound || ALLOWED_EXT.includes(ext)) {
     cb(null, true);
   } else {
-    cb(new Error('Unsupported file type. Allowed: .log, .txt, .tar, .tar.zip, .tar.gz'));
+    cb(new Error('Unsupported file type. Allowed: .log, .txt, .tar, .tar.zip, .tar.gz, .zip'));
   }
 }
 

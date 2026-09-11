@@ -31,7 +31,7 @@ form.addEventListener('submit', async (e) => {
   }
 
   if (!hasAllowedExtension(file.name)) {
-    statusEl.textContent = 'Unsupported file type. Allowed: .log, .txt, .tar, .tar.zip, .tar.gz';
+    statusEl.textContent = 'Unsupported file type. Allowed: .log, .txt, .tar, .tar.zip, .tar.gz, .zip';
     statusEl.classList.add('error');
     return;
   }
