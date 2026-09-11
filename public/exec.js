@@ -1,6 +1,7 @@
 const form = document.getElementById('uploadForm');
 const statusEl = document.getElementById('status');
 const execSummaryEl = document.getElementById('execSummary');
+const resetBtn = document.getElementById('resetBtn');
 const ALLOWED = ['.log', '.txt', '.tar', '.tar.zip', '.tar.gz', '.zip', '.gz'];
 
 let lastAnalysis = null;
@@ -57,6 +58,25 @@ form.addEventListener('submit', async (e) => {
   } catch (err) {
     statusEl.textContent = `Upload failed: ${err.message}`;
     statusEl.classList.add('error');
+  }
+});
+
+// Clears the selected file, status message, rendered exec summary, and any
+// charts/state from a previous upload so the page returns to its initial state.
+resetBtn.addEventListener('click', () => {
+  form.reset();
+  statusEl.textContent = '';
+  statusEl.className = 'status';
+  execSummaryEl.innerHTML = '';
+  lastAnalysis = null;
+  lastArchive = null;
+  if (gaugeChart) {
+    gaugeChart.destroy();
+    gaugeChart = null;
+  }
+  if (podChart) {
+    podChart.destroy();
+    podChart = null;
   }
 });
 

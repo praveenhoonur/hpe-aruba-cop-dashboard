@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HPE Aruba COP Dashboard — Executive Summary</title>
+<title>On-Prem Debugging Tool — Executive Summary</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
@@ -12,44 +12,49 @@
 <body>
   <header class="app-header">
     <div class="app-header-inner">
-      <h1>HPE Aruba COP Dashboard</h1>
+      <h1>On-Prem Debugging Tool</h1>
       <p class="subtitle">Executive Summary</p>
     </div>
   </header>
 
   <main class="page">
-    <section class="card">
-      <h2>Download Debug Script</h2>
-      <p>Download the Kubernetes debug session script used for COP troubleshooting.</p>
-      <a
-        class="btn btn-outline"
-        href="https://raw.githubusercontent.com/praveenhoonur/cop_debugging/main/k8s-debug-session.sh"
-        download="k8s-debug-session.sh"
-      >
-        ⬇ Download k8s-debug-session.sh
-      </a>
-      <p class="hint">
-        <a href="https://github.com/praveenhoonur/cop_debugging/blob/main/k8s-debug-session.sh" target="_blank" rel="noopener">
-          View source on GitHub
+    <div class="top-panels">
+      <section class="card top-panel">
+        <h2>Download Debug Script</h2>
+        <p>Download the Kubernetes debug session script used for COP troubleshooting.</p>
+        <a
+          class="btn btn-outline"
+          href="https://raw.githubusercontent.com/praveenhoonur/cop_debugging/main/k8s-debug-session.sh"
+          download="k8s-debug-session.sh"
+        >
+          ⬇ Download k8s-debug-session.sh
         </a>
-      </p>
-    </section>
+        <p class="hint">
+          <a href="https://github.com/praveenhoonur/cop_debugging/blob/main/k8s-debug-session.sh" target="_blank" rel="noopener">
+            View source on GitHub
+          </a>
+        </p>
+      </section>
 
-    <section class="card">
-      <h2>Upload Log File</h2>
-      <p>Allowed file types: <code>.log</code>, <code>.txt</code>, <code>.tar</code>, <code>.tar.zip</code>, <code>.tar.gz</code></p>
-      <form id="uploadForm">
-        <input type="file" id="logfile" name="logfile" accept=".log,.txt,.tar,.zip,.gz" required />
-        <button type="submit" class="btn">Upload</button>
-      </form>
-      <div id="status" class="status"></div>
-    </section>
+      <section class="card top-panel">
+        <h2>Upload Log File</h2>
+        <p>Allowed file types: <code>.log</code>, <code>.txt</code>, <code>.tar</code>, <code>.tar.zip</code>, <code>.tar.gz</code></p>
+        <form id="uploadForm">
+          <input type="file" id="logfile" name="logfile" accept=".log,.txt,.tar,.zip,.gz" required />
+          <div class="upload-actions">
+            <button type="submit" class="btn">Upload</button>
+            <button type="button" id="resetBtn" class="btn btn-outline">Reset</button>
+          </div>
+        </form>
+        <div id="status" class="status"></div>
+      </section>
+    </div>
 
     <section id="execSummary" class="exec-summary"></section>
   </main>
 
   <footer>
-    <p>&copy; 2026 HPE Aruba COP Dashboard</p>
+    <p>&copy; 2026 On-Prem Debugging Tool</p>
   </footer>
 
   <script src="shared.js"></script>
