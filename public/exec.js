@@ -5,8 +5,6 @@ const analysisTabsEl = document.getElementById('analysisTabs');
 const resetBtn = document.getElementById('resetBtn');
 const ALLOWED = ['.log', '.txt', '.tar', '.tar.zip', '.tar.gz', '.zip', '.gz'];
 
-let lastAnalysis = null;
-let lastArchive = null;
 let gaugeChart = null;
 let podChart = null;
 const breakdownChartHolder = {};
@@ -50,8 +48,6 @@ form.addEventListener('submit', async (e) => {
       statusEl.textContent = data.message;
       statusEl.classList.add('success');
       form.reset();
-      lastAnalysis = data.analysis;
-      lastArchive = data.archive;
       renderExecSummary(data.analysis, data.archive);
     } else {
       statusEl.textContent = data.message || 'Upload failed.';
@@ -71,8 +67,6 @@ resetBtn.addEventListener('click', () => {
   statusEl.className = 'status';
   execSummaryEl.innerHTML = '';
   analysisTabsEl.innerHTML = '';
-  lastAnalysis = null;
-  lastArchive = null;
   if (gaugeChart) {
     gaugeChart.destroy();
     gaugeChart = null;
@@ -173,13 +167,6 @@ function renderExecSummary(analysis, archive) {
 
   // Inline tabbed section: Cluster Health Analysis + Logs Analysis
   analysisTabsEl.appendChild(renderAnalysisTabsSection(analysis, archive, breakdownChartHolder));
-
-  // Optional full-page view (same content, standalone page/new tab)
-  const ctaCard = document.createElement('div');
-  ctaCard.className = 'card cta-card';
-  ctaCard.innerHTML = '<p>Prefer a standalone page? Open the same detailed analysis in a separate tab:</p>';
-  ctaCard.appendChild(deepDiveButton());
-  execSummaryEl.appendChild(ctaCard);
 }
 
 function verdictSentence(summary) {
@@ -191,22 +178,6 @@ function verdictSentence(summary) {
     return `${totals.warn} warning${totals.warn === 1 ? '' : 's'} detected — no critical failures, but worth reviewing.`;
   }
   return 'No errors or warnings detected. Cluster is operating normally.';
-}
-
-function deepDiveButton() {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'btn btn-primary';
-  btn.textContent = 'View Deep-Dive Analysis →';
-  btn.addEventListener('click', () => {
-    const ok = savePayloadForDeepDive({ analysis: lastAnalysis, archive: lastArchive });
-    if (!ok) {
-      alert('This report is too large to hand off to the Deep-Dive page in this browser. Try a smaller file.');
-      return;
-    }
-    window.location.href = 'deep-dive.html';
-  });
-  return btn;
 }
 
 function renderGaugeCard(healthScore, status) {
