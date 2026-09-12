@@ -519,6 +519,61 @@ footer {
   color: #333;
 }
 
+.kubectl-table-wrap {
+  overflow-x: auto;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.kubectl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.kubectl-table th,
+.kubectl-table td {
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid #e8eaed;
+}
+
+.kubectl-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--on-surface-secondary);
+  font-family: 'Roboto', sans-serif;
+  font-weight: 500;
+  border-bottom: 2px solid #dadce0;
+}
+
+.kubectl-table tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.kubectl-table td.kubectl-table-pct {
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+.kubectl-table td.kubectl-table-pct.level-error {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+.kubectl-table td.kubectl-table-pct.level-warn {
+  color: #7a5b00;
+  background: var(--warn-bg);
+}
+
+.kubectl-table td.kubectl-table-pct.level-info {
+  color: var(--info);
+  background: var(--info-bg);
+}
+
 /* ---------- Archive tabs ---------- */
 
 .analysis-tabs-section {

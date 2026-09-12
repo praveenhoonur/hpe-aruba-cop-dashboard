@@ -72,12 +72,16 @@ function renderSectionsCard(analysis, chartHolder) {
 
     const body = document.createElement('div');
     body.className = 'section-body';
-    section.entries.forEach((entry) => {
-      const line = document.createElement('div');
-      line.className = `log-line level-${entry.level}`;
-      line.textContent = entry.text;
-      body.appendChild(line);
-    });
+    if (section.table) {
+      body.appendChild(renderKubectlTable(section.table));
+    } else {
+      section.entries.forEach((entry) => {
+        const line = document.createElement('div');
+        line.className = `log-line level-${entry.level}`;
+        line.textContent = entry.text;
+        body.appendChild(line);
+      });
+    }
     wrapper.appendChild(body);
 
     sectionsCard.appendChild(wrapper);
@@ -85,6 +89,60 @@ function renderSectionsCard(analysis, chartHolder) {
   container.appendChild(sectionsCard);
 
   return container;
+}
+
+// Thresholds for coloring percentage-style columns (CPU%, MEMORY%, DISK%
+// etc.) so utilization stands out at a glance: green = healthy headroom,
+// amber = getting busy, red = near/at capacity.
+function percentLevel(value) {
+  const num = parseFloat(value);
+  if (Number.isNaN(num)) return null;
+  if (num >= 85) return 'error';
+  if (num >= 60) return 'warn';
+  return 'info';
+}
+
+// Renders whitespace-column kubectl-style output (e.g. `kubectl top nodes`,
+// `kubectl get nodes -o wide`) as a proper HTML table instead of raw text.
+// Any column whose header contains "%" gets its cells color-coded by
+// utilization so hot nodes/pods are immediately visible.
+function renderKubectlTable(table) {
+  const wrap = document.createElement('div');
+  wrap.className = 'kubectl-table-wrap';
+
+  const el = document.createElement('table');
+  el.className = 'kubectl-table';
+
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  table.headers.forEach((h) => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  el.appendChild(thead);
+
+  const percentCols = table.headers.map((h) => h.includes('%'));
+
+  const tbody = document.createElement('tbody');
+  table.rows.forEach((row) => {
+    const tr = document.createElement('tr');
+    row.forEach((cell, i) => {
+      const td = document.createElement('td');
+      td.textContent = cell;
+      if (percentCols[i]) {
+        const level = percentLevel(cell);
+        if (level) td.classList.add(`level-${level}`, 'kubectl-table-pct');
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  el.appendChild(tbody);
+
+  wrap.appendChild(el);
+  return wrap;
 }
 
 function renderBreakdownChartCard(sectionBreakdown, chartHolder) {

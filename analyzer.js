@@ -22,6 +22,34 @@ function detectLevel(line) {
   return 'neutral';
 }
 
+// Kubectl (and similar) CLI output is often a whitespace-column-aligned
+// table: a header row followed by data rows using 2+ spaces as the column
+// separator (single spaces are preserved so values like "Ubuntu 22.04 LTS"
+// stay intact). When a section's lines fit this shape consistently (every
+// row has the same column count as the header), we surface it as a proper
+// table instead of a wall of raw text; on any inconsistency we bail out and
+// let the section fall back to plain line-by-line rendering.
+function tryParseTable(entries) {
+  if (entries.length < 2) return null;
+  const headerLine = entries[0].text.trim();
+  if (!/\s{2,}/.test(headerLine)) return null;
+
+  const headers = headerLine.split(/\s{2,}/).map((h) => h.trim()).filter(Boolean);
+  if (headers.length < 2) return null;
+
+  const rows = [];
+  for (let i = 1; i < entries.length; i += 1) {
+    const raw = entries[i].text.trim();
+    if (!raw) continue;
+    const cols = raw.split(/\s{2,}/).map((c) => c.trim());
+    if (cols.length !== headers.length) return null;
+    rows.push(cols);
+  }
+  if (rows.length === 0) return null;
+
+  return { headers, rows };
+}
+
 function parseSections(content) {
   const lines = content.split(/\r?\n/);
   const sections = [];
@@ -68,7 +96,9 @@ function parseSections(content) {
     else if (counts.warn > 0) status = 'warn';
     else if (counts.info === 0) status = 'neutral';
 
-    return { title: section.title, status, counts, entries };
+    const table = tryParseTable(entries);
+
+    return { title: section.title, status, counts, entries, table };
   });
 }
 
