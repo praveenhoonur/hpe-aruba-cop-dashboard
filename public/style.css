@@ -574,6 +574,70 @@ footer {
   background: var(--info-bg);
 }
 
+.disk-usage-nodes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.disk-usage-node {
+  border: 1px solid #e8eaed;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}
+
+.disk-usage-node summary {
+  cursor: pointer;
+  font-weight: 500;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.9rem;
+}
+
+.disk-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.disk-usage-table th,
+.disk-usage-table td {
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #f1f3f4;
+}
+
+.disk-usage-table th {
+  color: var(--on-surface-secondary);
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.disk-usage-table td:first-child,
+.disk-usage-table td:nth-child(2) {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  white-space: nowrap;
+}
+
+.disk-usage-bar-cell {
+  width: 45%;
+}
+
+.disk-usage-bar-outer {
+  background: #f1f3f4;
+  border-radius: 3px;
+  height: 8px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.disk-usage-bar-inner {
+  background: var(--primary);
+  height: 100%;
+  border-radius: 3px;
+}
+
 /* ---------- Archive tabs ---------- */
 
 .analysis-tabs-section {

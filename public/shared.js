@@ -72,7 +72,9 @@ function renderSectionsCard(analysis, chartHolder) {
 
     const body = document.createElement('div');
     body.className = 'section-body';
-    if (section.table) {
+    if (section.diskUsage) {
+      body.appendChild(renderDiskUsageByNode(section.diskUsage));
+    } else if (section.table) {
       body.appendChild(renderKubectlTable(section.table));
     } else {
       section.entries.forEach((entry) => {
@@ -87,6 +89,74 @@ function renderSectionsCard(analysis, chartHolder) {
     sectionsCard.appendChild(wrapper);
   });
   container.appendChild(sectionsCard);
+
+  return container;
+}
+
+function formatBytesShort(bytes) {
+  if (!bytes || bytes <= 0) return '0B';
+  const units = ['B', 'K', 'M', 'G', 'T'];
+  let val = bytes;
+  let i = 0;
+  while (val >= 1024 && i < units.length - 1) {
+    val /= 1024;
+    i += 1;
+  }
+  return `${val.toFixed(val >= 10 || i === 0 ? 0 : 1)}${units[i]}`;
+}
+
+// Renders the per-node "/mnt/*" disk usage breakdown: one collapsible per
+// node (host), each containing a mount-usage table sorted largest-first
+// with a relative usage bar so the biggest volumes on that node are
+// immediately visible at a glance.
+function renderDiskUsageByNode(diskUsage) {
+  const container = document.createElement('div');
+  container.className = 'disk-usage-nodes';
+
+  diskUsage.nodes.forEach((node, idx) => {
+    const nodeDetails = document.createElement('details');
+    nodeDetails.className = 'disk-usage-node';
+    if (idx === 0) nodeDetails.open = true;
+
+    const nodeSummary = document.createElement('summary');
+    nodeSummary.innerHTML = `${escapeHtml(node.host)} <span class="counts">(${node.mounts.length} mount${node.mounts.length === 1 ? '' : 's'}, total ${formatBytesShort(node.totalBytes)})</span>`;
+    nodeDetails.appendChild(nodeSummary);
+
+    const table = document.createElement('table');
+    table.className = 'disk-usage-table';
+
+    const thead = document.createElement('thead');
+    thead.innerHTML = '<tr><th>Mount Path</th><th>Size</th><th>Relative Usage</th></tr>';
+    table.appendChild(thead);
+
+    const maxBytes = Math.max(...node.mounts.map((m) => m.bytes || 0), 1);
+    const tbody = document.createElement('tbody');
+    node.mounts.forEach((mount) => {
+      const tr = document.createElement('tr');
+      const pathTd = document.createElement('td');
+      pathTd.textContent = mount.path;
+      const sizeTd = document.createElement('td');
+      sizeTd.textContent = mount.size;
+      const barTd = document.createElement('td');
+      barTd.className = 'disk-usage-bar-cell';
+      const barOuter = document.createElement('div');
+      barOuter.className = 'disk-usage-bar-outer';
+      const barInner = document.createElement('div');
+      barInner.className = 'disk-usage-bar-inner';
+      const pct = Math.max(2, Math.round(((mount.bytes || 0) / maxBytes) * 100));
+      barInner.style.width = `${pct}%`;
+      barOuter.appendChild(barInner);
+      barTd.appendChild(barOuter);
+      tr.appendChild(pathTd);
+      tr.appendChild(sizeTd);
+      tr.appendChild(barTd);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    nodeDetails.appendChild(table);
+    container.appendChild(nodeDetails);
+  });
 
   return container;
 }

@@ -50,6 +50,65 @@ function tryParseTable(entries) {
   return { headers, rows };
 }
 
+// Converts a `du -h`-style human size ("246M", "19G", "4.0K") to bytes
+// (binary/1024-based, matching coreutils' -h output) for sorting/scaling.
+function parseHumanSize(str) {
+  const m = str.trim().match(/^([\d.]+)\s*([KMGT]?)B?$/i);
+  if (!m) return null;
+  const num = parseFloat(m[1]);
+  if (Number.isNaN(num)) return null;
+  const mult = { '': 1, K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4 }[m[2].toUpperCase()];
+  return num * mult;
+}
+
+// The per-node "/mnt/*" disk usage step runs `du -h` on each cluster node
+// and prints a hostname line followed by that node's "<size>\t/mnt/<name>"
+// mount usage lines (any SSH connectivity errors are interspersed and
+// ignored). This turns that flat, repetitive text block into a
+// { nodes: [{ host, mounts: [{ size, path, bytes }] }] } structure so the UI
+// can show one collapsible per node with mounts sorted by size, biggest
+// first.
+function tryParseDiskUsageByNode(entries) {
+  const mountLineRe = /^(\S+)\s+(\/mnt\/\S+)$/;
+  const nodes = [];
+  let current = null;
+  let matchedAny = false;
+
+  for (const entry of entries) {
+    const line = entry.text.trim();
+    if (!line) continue;
+
+    const mountMatch = line.match(mountLineRe);
+    if (mountMatch) {
+      matchedAny = true;
+      if (!current) {
+        current = { host: 'unknown host', mounts: [] };
+        nodes.push(current);
+      }
+      current.mounts.push({ size: mountMatch[1], path: mountMatch[2], bytes: parseHumanSize(mountMatch[1]) });
+      continue;
+    }
+
+    // A bare hostname-looking line (no spaces, not an SSH error message)
+    // starts a new node's mount list.
+    if (!line.includes(' ') && !/^ssh:/i.test(line)) {
+      current = { host: line, mounts: [] };
+      nodes.push(current);
+    }
+  }
+
+  if (!matchedAny) return null;
+  const nonEmpty = nodes.filter((n) => n.mounts.length > 0);
+  if (nonEmpty.length === 0) return null;
+
+  nonEmpty.forEach((n) => {
+    n.mounts.sort((a, b) => (b.bytes || 0) - (a.bytes || 0));
+    n.totalBytes = n.mounts.reduce((sum, m) => sum + (m.bytes || 0), 0);
+  });
+
+  return { nodes: nonEmpty };
+}
+
 function parseSections(content) {
   const lines = content.split(/\r?\n/);
   const sections = [];
@@ -96,9 +155,10 @@ function parseSections(content) {
     else if (counts.warn > 0) status = 'warn';
     else if (counts.info === 0) status = 'neutral';
 
-    const table = tryParseTable(entries);
+    const diskUsage = /disk usage/i.test(section.title) ? tryParseDiskUsageByNode(entries) : null;
+    const table = diskUsage ? null : tryParseTable(entries);
 
-    return { title: section.title, status, counts, entries, table };
+    return { title: section.title, status, counts, entries, table, diskUsage };
   });
 }
 
