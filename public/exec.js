@@ -37,14 +37,12 @@ form.addEventListener('submit', async (e) => {
   const formData = new FormData();
   formData.append('logfile', file);
 
-  statusEl.textContent = 'Uploading...';
   execSummaryEl.innerHTML = '';
 
   try {
-    const res = await fetch('/upload', { method: 'POST', body: formData });
-    const data = await res.json();
+    const data = await uploadWithProgress(formData);
 
-    if (res.ok && data.success) {
+    if (data.success) {
       statusEl.textContent = data.message;
       statusEl.classList.add('success');
       form.reset();
@@ -58,6 +56,63 @@ form.addEventListener('submit', async (e) => {
     statusEl.classList.add('error');
   }
 });
+
+// Uploads via XMLHttpRequest instead of fetch so we can (a) report real
+// upload progress for large files over slow/VPN links, where a silent,
+// progress-less "Uploading..." message for 1-2+ minutes gets mistaken for a
+// hang/failure, and (b) surface a specific reason when the request truly
+// fails (network drop vs. an explicit non-2xx response) instead of the
+// generic, unhelpful "Failed to fetch" message fetch() throws for any
+// network-level error.
+function uploadWithProgress(formData) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/upload');
+    xhr.timeout = 0; // no client-side timeout; large uploads can take minutes
+
+    xhr.upload.addEventListener('progress', (evt) => {
+      if (evt.lengthComputable) {
+        const pct = Math.round((evt.loaded / evt.total) * 100);
+        const mbLoaded = (evt.loaded / (1024 * 1024)).toFixed(1);
+        const mbTotal = (evt.total / (1024 * 1024)).toFixed(1);
+        statusEl.textContent = `Uploading... ${pct}% (${mbLoaded} MB / ${mbTotal} MB)`;
+        statusEl.className = 'status';
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      statusEl.textContent = 'Processing upload...';
+      let data;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch (parseErr) {
+        reject(new Error(`server returned an invalid response (HTTP ${xhr.status})`));
+        return;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data);
+      } else {
+        resolve(data);
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      reject(new Error('network error during upload (connection lost/reset). If this happens on large files, check for a VPN, proxy, or firewall timeout between your browser and the server.'));
+    });
+
+    xhr.addEventListener('abort', () => {
+      reject(new Error('upload was aborted.'));
+    });
+
+    xhr.addEventListener('timeout', () => {
+      reject(new Error('upload timed out.'));
+    });
+
+    statusEl.textContent = 'Uploading... 0%';
+    statusEl.className = 'status';
+    xhr.send(formData);
+  });
+}
 
 // Clears the selected file, status message, rendered exec summary, and any
 // charts/state from a previous upload so the page returns to its initial state.
