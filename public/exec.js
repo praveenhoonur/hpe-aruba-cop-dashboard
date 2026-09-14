@@ -122,6 +122,12 @@ resetBtn.addEventListener('click', () => {
   statusEl.className = 'status';
   execSummaryEl.innerHTML = '';
   analysisTabsEl.innerHTML = '';
+  // Reset previously wiped the Deep Search tab along with the exec summary
+  // and never rendered it back, silently breaking search until a full page
+  // reload. Deep Search isn't tied to the current upload (it searches
+  // whatever's still within the server-side retention window), so restore
+  // the tab bar immediately, same as the initial page-load render.
+  analysisTabsEl.appendChild(renderAnalysisTabsSection(null, null, breakdownChartHolder));
   if (gaugeChart) {
     gaugeChart.destroy();
     gaugeChart = null;
