@@ -123,6 +123,18 @@ app.post('/api/rca-lookup', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`HPE Aruba COP Dashboard running at http://localhost:${PORT}`);
 });
+
+// Node's http server enforces a default 5-minute limit (requestTimeout) on
+// how long it will wait to receive a full request, plus a 60s headersTimeout
+// for just the header phase. Large uploads (100MB+) over slower/VPN links
+// can easily take longer than 5 minutes to transfer, which was silently
+// destroying the socket mid-upload and surfacing to the browser as a
+// generic "Failed to fetch" with no server-side error logged. Disable both
+// so large-file uploads aren't cut off; per-file size is still bounded by
+// multer's fileSize limit above.
+server.requestTimeout = 0;
+server.headersTimeout = 0;
+
