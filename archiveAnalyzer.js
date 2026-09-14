@@ -2,7 +2,21 @@ const fs = require('fs');
 const path = require('path');
 const { isCopSanityLogPrefix, analyzeSanityLogFile } = require('./analyzer');
 
-const MAX_READ_BYTES = 5 * 1024 * 1024; // cap per-file read to keep grouping fast on huge dumps
+// Cap per-file read to keep both processing time and memory bounded on huge
+// dumps. Large sanity-check bundles can contain thousands of pod log files
+// totaling multiple GB once extracted; reading each in full (or even at 5MB)
+// synchronously in a tight loop was observed to accumulate enough live
+// string/array memory to blow past Node's default ~2GB heap limit and crash
+// the entire process (killing every other in-flight request, not just the
+// large upload) with a generic "Failed to fetch" on the client. 1MB per file
+// is still far more than enough to detect the RCA patterns below, which
+// typically show up in the first few hundred lines of a log.
+const MAX_READ_BYTES = 1 * 1024 * 1024;
+
+// Skip files larger than this entirely (still recorded, just not scanned)
+// to avoid wasting time/memory opening thousands of huge binary or rotated
+// log files that are unlikely to contain useful, recent RCA signal anyway.
+const MAX_FILE_SIZE_TO_SCAN = 200 * 1024 * 1024;
 
 // Ordered set of known failure signatures. For a given group of related
 // files we tally how many lines match each pattern; the highest-count
@@ -84,6 +98,7 @@ function walkFiles(dir, base) {
 function readTextSafe(fullPath) {
   try {
     const stat = fs.statSync(fullPath);
+    if (stat.size > MAX_FILE_SIZE_TO_SCAN) return '';
     const fd = fs.openSync(fullPath, 'r');
     const size = Math.min(stat.size, MAX_READ_BYTES);
     const buffer = Buffer.alloc(size);

@@ -59,10 +59,11 @@ app.post('/upload', (req, res) => {
 
     let analysis = null;
     let archive = null;
+    let extractRoot = null;
 
     try {
       if (isArchiveFile(req.file.originalname)) {
-        const extractRoot = path.join(uploadDir, 'extracted', path.basename(req.file.path));
+        extractRoot = path.join(uploadDir, 'extracted', path.basename(req.file.path));
         await extractArchive(req.file.path, req.file.originalname, extractRoot);
         const { sanityLogAnalysis, tabs } = analyzeExtractedArchive(extractRoot);
         analysis = sanityLogAnalysis;
@@ -72,6 +73,24 @@ app.post('/upload', (req, res) => {
       }
     } catch (parseErr) {
       console.error('Analysis failed:', parseErr);
+    }
+
+    // All analysis results are embedded in the JSON response below and the
+    // frontend never re-reads the raw upload or its extracted contents, so
+    // clean both up now rather than letting them accumulate on disk forever.
+    // Previously nothing removed these, and after ~50 uploads the uploads/
+    // directory had grown to 28GB (26GB of it stale extracted archives),
+    // pushing the disk to 79% full — left unchecked this eventually causes
+    // new uploads to fail outright once disk space runs out. This is
+    // best-effort/fire-and-forget so a slow cleanup never delays the
+    // response to the user.
+    fs.rm(req.file.path, { force: true }, (rmErr) => {
+      if (rmErr) console.error('Failed to clean up uploaded file:', rmErr);
+    });
+    if (extractRoot) {
+      fs.rm(extractRoot, { recursive: true, force: true }, (rmErr) => {
+        if (rmErr) console.error('Failed to clean up extracted archive:', rmErr);
+      });
     }
 
     res.json({

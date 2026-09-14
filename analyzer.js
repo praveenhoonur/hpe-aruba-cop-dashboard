@@ -302,9 +302,28 @@ function analyzeContent(content, originalName) {
   return { fileName: originalName, clusterFqdn, summary, sections };
 }
 
+// Cap how much of a sanity log we read into memory as a defense-in-depth
+// measure — legitimate cop_sanity_logs files are typically a few hundred KB,
+// but an unexpectedly huge one (e.g. a mis-tagged/corrupted upload) should
+// not be able to exhaust the process heap. 50MB is far more than any real
+// sanity log needs while still being generous.
+const MAX_SANITY_LOG_BYTES = 50 * 1024 * 1024;
+
+function readSanityLogContent(filePath) {
+  const stat = fs.statSync(filePath);
+  if (stat.size <= MAX_SANITY_LOG_BYTES) {
+    return fs.readFileSync(filePath, 'utf8');
+  }
+  const fd = fs.openSync(filePath, 'r');
+  const buffer = Buffer.alloc(MAX_SANITY_LOG_BYTES);
+  fs.readSync(fd, buffer, 0, MAX_SANITY_LOG_BYTES, 0);
+  fs.closeSync(fd);
+  return buffer.toString('utf8');
+}
+
 function analyzeLogFile(filePath, originalName) {
   if (!isCopSanityLog(originalName)) return null;
-  const content = fs.readFileSync(filePath, 'utf8');
+  const content = readSanityLogContent(filePath);
   return analyzeContent(content, originalName);
 }
 
@@ -318,7 +337,7 @@ function isCopSanityLogPrefix(fileName) {
 }
 
 function analyzeSanityLogFile(filePath, originalName) {
-  const content = fs.readFileSync(filePath, 'utf8');
+  const content = readSanityLogContent(filePath);
   return analyzeContent(content, originalName);
 }
 
