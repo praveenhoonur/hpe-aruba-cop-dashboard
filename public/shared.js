@@ -372,6 +372,7 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder) {
   const tabs = [
     { name: 'Cluster Health Analysis' },
     { name: 'Logs Analysis' },
+    { name: 'Deep Search' },
   ];
 
   tabs.forEach((tab, idx) => {
@@ -399,7 +400,7 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder) {
         empty.textContent = 'No cop_sanity_logs* file was found in this upload, so no cluster health section details are available.';
         panel.appendChild(empty);
       }
-    } else {
+    } else if (idx === 1) {
       if (archive && Array.isArray(archive.tabs) && archive.tabs.length > 0) {
         panel.appendChild(renderArchiveTabs(archive));
       } else {
@@ -408,6 +409,8 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder) {
         empty.textContent = 'No directory-based archive contents were extracted for this upload.';
         panel.appendChild(empty);
       }
+    } else {
+      panel.appendChild(renderDeepSearchTab());
     }
 
     panels.appendChild(panel);
@@ -416,6 +419,148 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder) {
   section.appendChild(tabBar);
   section.appendChild(panels);
   return section;
+}
+
+// "Deep Search" tab: lets the user run a keyword/regex query across every
+// upload's raw or extracted log content that's still within the deep-search
+// retention window (server-side TTL, see deepSearch.js), not just the file
+// they just uploaded. Results are a flat, chronological list (most recent
+// upload first) of matching lines with the matched text highlighted.
+function renderDeepSearchTab() {
+  const container = document.createElement('div');
+  container.className = 'deep-search';
+
+  const intro = document.createElement('p');
+  intro.className = 'hint';
+  intro.textContent = 'Search across the content of recently uploaded logs (kept searchable for 30 minutes after upload). Enter a keyword, phrase, or regex pattern (e.g. "error|panic").';
+  container.appendChild(intro);
+
+  const availabilityEl = document.createElement('div');
+  availabilityEl.className = 'deep-search-availability hint';
+  container.appendChild(availabilityEl);
+
+  const formRow = document.createElement('div');
+  formRow.className = 'deep-search-form';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Search keyword or regex, e.g. "CrashLoopBackOff" or "error|timeout"';
+  input.className = 'deep-search-input';
+
+  const searchBtn = document.createElement('button');
+  searchBtn.type = 'button';
+  searchBtn.className = 'btn';
+  searchBtn.textContent = 'Search';
+
+  formRow.appendChild(input);
+  formRow.appendChild(searchBtn);
+  container.appendChild(formRow);
+
+  const statusEl = document.createElement('div');
+  statusEl.className = 'deep-search-status status';
+  container.appendChild(statusEl);
+
+  const resultsEl = document.createElement('div');
+  resultsEl.className = 'deep-search-results';
+  container.appendChild(resultsEl);
+
+  function refreshAvailability() {
+    fetch('/api/deep-search/uploads')
+      .then((res) => res.json())
+      .then((data) => {
+        const uploads = (data && data.uploads) || [];
+        if (uploads.length === 0) {
+          availabilityEl.textContent = 'No uploads are currently searchable. Upload a file above to make it searchable.';
+          return;
+        }
+        const names = uploads.map((u) => u.label).join(', ');
+        availabilityEl.textContent = `Currently searchable (${uploads.length}): ${names}`;
+      })
+      .catch(() => {
+        availabilityEl.textContent = '';
+      });
+  }
+  refreshAvailability();
+
+  function highlightMatch(line, query) {
+    let re;
+    try {
+      re = new RegExp(query, 'gi');
+    } catch (err) {
+      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      re = new RegExp(escaped, 'gi');
+    }
+    const safe = escapeHtml(line);
+    // Re-run the match against the escaped string's original (unescaped)
+    // positions is unnecessary here since we only need visual highlighting;
+    // apply the same regex directly to the escaped text (safe because
+    // escaping only replaces &, <, > which don't affect typical patterns).
+    return safe.replace(re, (m) => `<mark>${m}</mark>`);
+  }
+
+  function runSearch() {
+    const query = input.value.trim();
+    if (!query) {
+      statusEl.textContent = 'Enter a search term first.';
+      statusEl.className = 'deep-search-status status error';
+      return;
+    }
+
+    statusEl.textContent = 'Searching...';
+    statusEl.className = 'deep-search-status status';
+    resultsEl.innerHTML = '';
+
+    fetch('/api/deep-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success) {
+          statusEl.textContent = data.message || 'Search failed.';
+          statusEl.className = 'deep-search-status status error';
+          return;
+        }
+
+        const { matches, truncated, uploadsSearched } = data;
+        if (matches.length === 0) {
+          statusEl.textContent = `No matches found across ${uploadsSearched} searchable upload${uploadsSearched === 1 ? '' : 's'}.`;
+          statusEl.className = 'deep-search-status status';
+          return;
+        }
+
+        statusEl.textContent = `${matches.length} match${matches.length === 1 ? '' : 'es'} across ${uploadsSearched} upload${uploadsSearched === 1 ? '' : 's'}${truncated ? ' (results truncated at 500 matches — refine your search for a complete view)' : ''}.`;
+        statusEl.className = 'deep-search-status status success';
+
+        const list = document.createElement('div');
+        list.className = 'deep-search-match-list';
+        matches.forEach((m) => {
+          const row = document.createElement('div');
+          row.className = 'deep-search-match';
+          row.innerHTML = `
+            <div class="deep-search-match-meta">
+              <span class="deep-search-upload-label">${escapeHtml(m.uploadLabel)}</span>
+              <span class="deep-search-file-path">${escapeHtml(m.file)}:${m.lineNumber}</span>
+            </div>
+            <pre class="deep-search-line">${highlightMatch(m.line, query)}</pre>
+          `;
+          list.appendChild(row);
+        });
+        resultsEl.appendChild(list);
+      })
+      .catch((err) => {
+        statusEl.textContent = `Search failed: ${err.message}`;
+        statusEl.className = 'deep-search-status status error';
+      });
+  }
+
+  searchBtn.addEventListener('click', runSearch);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') runSearch();
+  });
+
+  return container;
 }
 
 // Shared widget: given RCA text (Copilot narrative or a heuristic RCA entry),

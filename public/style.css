@@ -679,6 +679,73 @@ footer {
   display: block;
 }
 
+.deep-search-availability {
+  margin-bottom: 0.75rem;
+}
+
+.deep-search-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.deep-search-input {
+  flex: 1;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #dcdfe4;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.deep-search-status {
+  margin-bottom: 0.75rem;
+}
+
+.deep-search-match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.deep-search-match {
+  background: var(--background);
+  border: 1px solid #dcdfe4;
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+}
+
+.deep-search-match-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.78rem;
+  color: var(--on-surface-secondary);
+  margin-bottom: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.deep-search-upload-label {
+  font-weight: 600;
+}
+
+.deep-search-file-path {
+  font-family: monospace;
+}
+
+.deep-search-line {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+}
+
+.deep-search-line mark {
+  background: #fef08a;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
 .group-files {
   font-size: 0.8rem;
   color: var(--on-surface-secondary);

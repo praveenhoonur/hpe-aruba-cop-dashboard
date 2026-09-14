@@ -140,9 +140,7 @@ const OVERALL_STATUS_LABEL = {
   error: 'Critical Issues Detected',
   warn: 'Warnings Detected',
   info: 'Healthy',
-};
-
-const STATUS_COLOR = {
+};const STATUS_COLOR = {
   error: '#d93025',
   warn: '#f9ab00',
   info: '#188038',
@@ -397,3 +395,11 @@ function renderCopilotBriefing(analysis) {
 
   return wrapper;
 }
+
+// Deep Search needs to work across recently uploaded files even if the
+// user hasn't uploaded anything in the current page load (or refreshed the
+// page after uploading), so render the tab bar (Cluster Health / Logs
+// Analysis / Deep Search) immediately on load rather than waiting for a
+// successful upload. Cluster Health / Logs Analysis simply show their
+// existing "no data yet" placeholders until an upload happens on this page.
+analysisTabsEl.appendChild(renderAnalysisTabsSection(null, null, breakdownChartHolder));

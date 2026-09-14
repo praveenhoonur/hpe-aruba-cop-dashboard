@@ -8,6 +8,7 @@ const { extractArchive, isArchiveFile } = require('./archiveExtractor');
 const { analyzeExtractedArchive } = require('./archiveAnalyzer');
 const { generateCopilotNarrative } = require('./copilotNarrator');
 const { lookupRelatedIssues } = require('./rcaLookup');
+const deepSearch = require('./deepSearch');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -75,23 +76,21 @@ app.post('/upload', (req, res) => {
       console.error('Analysis failed:', parseErr);
     }
 
-    // All analysis results are embedded in the JSON response below and the
-    // frontend never re-reads the raw upload or its extracted contents, so
-    // clean both up now rather than letting them accumulate on disk forever.
-    // Previously nothing removed these, and after ~50 uploads the uploads/
-    // directory had grown to 28GB (26GB of it stale extracted archives),
-    // pushing the disk to 79% full — left unchecked this eventually causes
-    // new uploads to fail outright once disk space runs out. This is
-    // best-effort/fire-and-forget so a slow cleanup never delays the
-    // response to the user.
-    fs.rm(req.file.path, { force: true }, (rmErr) => {
-      if (rmErr) console.error('Failed to clean up uploaded file:', rmErr);
+    // All analysis results (summaries/RCA) are embedded in the JSON
+    // response below, so the raw upload and its extracted contents aren't
+    // needed for the exec/deep-dive UI anymore. However Deep Search needs
+    // the actual file content to grep through, so instead of deleting these
+    // immediately (which previously caused the disk to balloon to 28GB
+    // before that cleanup existed), hand them off to the deep-search
+    // registry, which keeps them for a bounded TTL and cleans up after
+    // itself automatically — see deepSearch.js.
+    const uploadId = path.basename(req.file.path);
+    deepSearch.registerUpload({
+      uploadId,
+      label: req.file.originalname,
+      root: extractRoot || req.file.path,
+      isArchive: Boolean(extractRoot),
     });
-    if (extractRoot) {
-      fs.rm(extractRoot, { recursive: true, force: true }, (rmErr) => {
-        if (rmErr) console.error('Failed to clean up extracted archive:', rmErr);
-      });
-    }
 
     res.json({
       success: true,
@@ -141,6 +140,37 @@ app.post('/api/rca-lookup', async (req, res) => {
     res.status(502).json({ success: false, message: err.message });
   }
 });
+
+// Lists uploads currently available to search (i.e. still within the
+// deep-search TTL window), newest first. Used by the "Deep Search" tab to
+// show the user what's currently searchable before/alongside their query.
+app.get('/api/deep-search/uploads', (req, res) => {
+  res.json({ success: true, uploads: deepSearch.listActiveUploads() });
+});
+
+// Full-text search across every currently-retained upload's raw/extracted
+// files. The query is tried as a case-insensitive regex first (so patterns
+// like "error|panic" work) and transparently falls back to a plain
+// substring match if it doesn't compile as valid regex, so normal keyword
+// searches always work too. Streams each file line-by-line rather than
+// loading whole files into memory, and caps total matches, so this can't
+// reproduce the OOM issue large synchronous reads caused elsewhere.
+app.post('/api/deep-search', async (req, res) => {
+  const { query } = req.body || {};
+  if (!query || typeof query !== 'string' || !query.trim()) {
+    return res.status(400).json({ success: false, message: 'Missing search query.' });
+  }
+
+  try {
+    const result = await deepSearch.deepSearch(query.trim());
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Deep search failed:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+deepSearch.startSweeper();
 
 const server = app.listen(PORT, () => {
   console.log(`HPE Aruba COP Dashboard running at http://localhost:${PORT}`);
