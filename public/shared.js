@@ -432,7 +432,7 @@ function renderDeepSearchTab() {
 
   const intro = document.createElement('p');
   intro.className = 'hint';
-  intro.textContent = 'Search across the content of recently uploaded logs (kept searchable for 30 minutes after upload). Enter a keyword, phrase, or regex pattern (e.g. "error|panic").';
+  intro.textContent = 'Search across the content of recently uploaded logs (kept searchable for 30 minutes after upload). Enter a keyword, regex pattern, or combine terms with AND / OR, e.g. error AND timeout, or CrashLoopBackOff OR OOMKilled.';
   container.appendChild(intro);
 
   const availabilityEl = document.createElement('div');
@@ -444,7 +444,7 @@ function renderDeepSearchTab() {
 
   const input = document.createElement('input');
   input.type = 'text';
-  input.placeholder = 'Search keyword or regex, e.g. "CrashLoopBackOff" or "error|timeout"';
+  input.placeholder = 'Search terms, e.g. "error AND timeout", "CrashLoopBackOff OR OOMKilled", or a regex';
   input.className = 'deep-search-input';
 
   const searchBtn = document.createElement('button');
@@ -482,20 +482,48 @@ function renderDeepSearchTab() {
   }
   refreshAvailability();
 
+  // Highlights every AND/OR term from the query that actually appears in
+  // this matched line (mirrors the server's boolean parsing in
+  // deepSearch.js's buildMatcher — split on OR, then AND, unquote, and try
+  // each term as regex-or-literal), so e.g. "error AND timeout" highlights
+  // both "error" and "timeout" wherever they occur, not the literal phrase
+  // "error AND timeout".
   function highlightMatch(line, query) {
-    let re;
-    try {
-      re = new RegExp(query, 'gi');
-    } catch (err) {
-      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      re = new RegExp(escaped, 'gi');
-    }
-    const safe = escapeHtml(line);
-    // Re-run the match against the escaped string's original (unescaped)
-    // positions is unnecessary here since we only need visual highlighting;
-    // apply the same regex directly to the escaped text (safe because
-    // escaping only replaces &, <, > which don't affect typical patterns).
-    return safe.replace(re, (m) => `<mark>${m}</mark>`);
+    const terms = query
+      .split(/\s+OR\s+/i)
+      .flatMap((group) => group.split(/\s+AND\s+/i))
+      .map((t) => t.trim())
+      .map((t) => {
+        if (t.length >= 2 && ((t[0] === '"' && t[t.length - 1] === '"') || (t[0] === "'" && t[t.length - 1] === "'"))) {
+          return t.slice(1, -1);
+        }
+        return t;
+      })
+      .filter((t) => t.length > 0);
+
+    let safe = escapeHtml(line);
+    const usedTerms = terms.length > 0 ? terms : [query];
+    usedTerms.forEach((term) => {
+      let re;
+      try {
+        re = new RegExp(term, 'gi');
+      } catch (err) {
+        const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        re = new RegExp(escaped, 'gi');
+      }
+      // Apply directly to the already-escaped text — safe because escaping
+      // only touches &, <, > which don't affect typical search terms — and
+      // skip already-highlighted spans so overlapping terms don't nest
+      // <mark> tags inside each other.
+      safe = safe.replace(re, (m, offset, full) => {
+        const before = full.slice(0, offset);
+        const openCount = (before.match(/<mark>/g) || []).length;
+        const closeCount = (before.match(/<\/mark>/g) || []).length;
+        if (openCount > closeCount) return m; // already inside a <mark>
+        return `<mark>${m}</mark>`;
+      });
+    });
+    return safe;
   }
 
   function runSearch() {

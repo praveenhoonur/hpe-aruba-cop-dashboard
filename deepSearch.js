@@ -85,20 +85,61 @@ function walkFiles(dir, base) {
   return results;
 }
 
-// Builds a matcher from the user's query. Tries the input as a regex first
-// (case-insensitive) so power users can search with patterns like
-// "error|panic" or "connection refused.*timeout"; if it doesn't compile as
-// valid regex (e.g. contains unescaped special chars a plain-keyword search
-// would use), transparently falls back to a literal, case-insensitive
-// substring match so normal keyword searches always still work.
-function buildMatcher(query) {
+// Builds a single-term matcher: tries the term as a regex first (so power
+// users can use patterns like "conn.*timeout" inside an AND/OR expression),
+// falling back to a literal, case-insensitive substring match if it doesn't
+// compile as valid regex.
+function buildTermMatcher(term) {
   try {
-    const re = new RegExp(query, 'gi');
-    return { test: (line) => re.test(line), reset: () => { re.lastIndex = 0; } };
+    const re = new RegExp(term, 'gi');
+    return { test: (line) => { re.lastIndex = 0; return re.test(line); } };
   } catch (err) {
-    const lower = query.toLowerCase();
-    return { test: (line) => line.toLowerCase().includes(lower), reset: () => {} };
+    const lower = term.toLowerCase();
+    return { test: (line) => line.toLowerCase().includes(lower) };
   }
+}
+
+// Strips a single pair of matching double or single quotes wrapping a term,
+// so quoted phrases like "connection refused" AND "OOMKilled" can contain
+// spaces without being split by the AND/OR tokenizer below.
+function unquote(term) {
+  const t = term.trim();
+  if (t.length >= 2 && ((t[0] === '"' && t[t.length - 1] === '"') || (t[0] === "'" && t[t.length - 1] === "'"))) {
+    return t.slice(1, -1);
+  }
+  return t;
+}
+
+// Parses a query supporting boolean AND / OR between keywords or regex
+// terms, e.g. "error AND timeout", "CrashLoopBackOff OR OOMKilled", or
+// "error AND (timeout OR refused)" written without parens as
+// "error AND timeout OR error AND refused". OR has lower precedence than
+// AND (standard convention), so the query is split into OR-groups first,
+// then each group into AND-terms: the line matches if ANY OR-group has ALL
+// of its AND-terms present. A query with no AND/OR keywords behaves exactly
+// as before (single term, regex-or-literal).
+function buildMatcher(query) {
+  const orGroups = query
+    .split(/\s+OR\s+/i)
+    .map((group) => group
+      .split(/\s+AND\s+/i)
+      .map((term) => unquote(term))
+      .filter((term) => term.length > 0)
+      .map((term) => buildTermMatcher(term)))
+    .filter((andTerms) => andTerms.length > 0);
+
+  if (orGroups.length === 0) {
+    // Degenerate query (e.g. just "AND"/"OR" or whitespace) — fall back to
+    // matching the raw query as a single term so we never silently match
+    // everything or nothing unexpectedly.
+    const fallback = buildTermMatcher(query);
+    return { test: (line) => fallback.test(line), reset: () => {} };
+  }
+
+  return {
+    test: (line) => orGroups.some((andTerms) => andTerms.every((m) => m.test(line))),
+    reset: () => {},
+  };
 }
 
 async function searchFile(fullPath, relPath, uploadId, uploadLabel, matcher, matches, lineNumberOffset = 0) {
