@@ -746,6 +746,48 @@ footer {
   border-radius: 2px;
 }
 
+.deep-search-browse {
+  margin-bottom: 1.25rem;
+}
+
+.deep-search-browse h3 {
+  margin-top: 0;
+}
+
+.deep-search-browse-row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.deep-search-select {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #dcdfe4;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: #fff;
+}
+
+.deep-search-file-content {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid #dcdfe4;
+  border-radius: 6px;
+}
+
+.deep-search-file-pre {
+  margin: 0;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.82rem;
+  font-family: 'Courier New', monospace;
+  background: #fafafa;
+}
+
 .group-files {
   font-size: 0.8rem;
   color: var(--on-surface-secondary);

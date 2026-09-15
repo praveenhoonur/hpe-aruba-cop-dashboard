@@ -439,6 +439,141 @@ function renderDeepSearchTab() {
   availabilityEl.className = 'deep-search-availability hint';
   container.appendChild(availabilityEl);
 
+  // Browse section: pick a directory, then a file within it, to view the
+  // file's raw content directly — independent of the keyword/regex search
+  // below, useful when you already know roughly where to look.
+  const browseSection = document.createElement('div');
+  browseSection.className = 'deep-search-browse card';
+
+  const browseHeading = document.createElement('h3');
+  browseHeading.textContent = 'Browse Files';
+  browseSection.appendChild(browseHeading);
+
+  const browseRow = document.createElement('div');
+  browseRow.className = 'deep-search-browse-row';
+
+  const dirSelect = document.createElement('select');
+  dirSelect.className = 'deep-search-select';
+  const dirPlaceholder = document.createElement('option');
+  dirPlaceholder.value = '';
+  dirPlaceholder.textContent = 'Select a directory…';
+  dirSelect.appendChild(dirPlaceholder);
+
+  const fileSelect = document.createElement('select');
+  fileSelect.className = 'deep-search-select';
+  fileSelect.disabled = true;
+  const filePlaceholder = document.createElement('option');
+  filePlaceholder.value = '';
+  filePlaceholder.textContent = 'Select a file…';
+  fileSelect.appendChild(filePlaceholder);
+
+  browseRow.appendChild(dirSelect);
+  browseRow.appendChild(fileSelect);
+  browseSection.appendChild(browseRow);
+
+  const browseStatusEl = document.createElement('div');
+  browseStatusEl.className = 'deep-search-status status';
+  browseSection.appendChild(browseStatusEl);
+
+  const fileContentEl = document.createElement('div');
+  fileContentEl.className = 'deep-search-file-content';
+  browseSection.appendChild(fileContentEl);
+
+  container.appendChild(browseSection);
+
+  // Each <option> in dirSelect maps (by index) to one of these entries, so
+  // we don't need to encode uploadId/dir into the option value itself.
+  let directoryEntries = [];
+
+  function refreshDirectories() {
+    fetch('/api/deep-search/directories')
+      .then((res) => res.json())
+      .then((data) => {
+        directoryEntries = (data && data.directories) || [];
+        dirSelect.innerHTML = '';
+        dirSelect.appendChild(dirPlaceholder.cloneNode(true));
+        directoryEntries.forEach((entry, idx) => {
+          const opt = document.createElement('option');
+          opt.value = String(idx);
+          const dirLabel = entry.dir === '.' ? '(root)' : entry.dir;
+          opt.textContent = `${entry.uploadLabel} / ${dirLabel}`;
+          dirSelect.appendChild(opt);
+        });
+      })
+      .catch(() => {
+        /* directory dropdown just stays empty on failure */
+      });
+  }
+
+  dirSelect.addEventListener('change', () => {
+    fileSelect.innerHTML = '';
+    fileSelect.appendChild(filePlaceholder.cloneNode(true));
+    fileSelect.disabled = true;
+    fileContentEl.innerHTML = '';
+    browseStatusEl.textContent = '';
+    browseStatusEl.className = 'deep-search-status status';
+
+    const entry = directoryEntries[Number(dirSelect.value)];
+    if (!entry) return;
+
+    browseStatusEl.textContent = 'Loading files…';
+    fetch(`/api/deep-search/files?uploadId=${encodeURIComponent(entry.uploadId)}&dir=${encodeURIComponent(entry.dir)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success) {
+          browseStatusEl.textContent = data.message || 'Failed to load files.';
+          browseStatusEl.className = 'deep-search-status status error';
+          return;
+        }
+        browseStatusEl.textContent = '';
+        data.files.forEach((f) => {
+          const opt = document.createElement('option');
+          opt.value = f.relPath;
+          const sizeLabel = f.size != null ? ` (${(f.size / 1024).toFixed(1)} KB)` : '';
+          opt.textContent = `${f.relPath.split('/').pop()}${sizeLabel}`;
+          fileSelect.appendChild(opt);
+        });
+        fileSelect.disabled = data.files.length === 0;
+      })
+      .catch((err) => {
+        browseStatusEl.textContent = `Failed to load files: ${err.message}`;
+        browseStatusEl.className = 'deep-search-status status error';
+      });
+  });
+
+  fileSelect.addEventListener('change', () => {
+    fileContentEl.innerHTML = '';
+    const entry = directoryEntries[Number(dirSelect.value)];
+    const relPath = fileSelect.value;
+    if (!entry || !relPath) return;
+
+    browseStatusEl.textContent = 'Loading content…';
+    browseStatusEl.className = 'deep-search-status status';
+    fetch(`/api/deep-search/file-content?uploadId=${encodeURIComponent(entry.uploadId)}&file=${encodeURIComponent(relPath)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success) {
+          browseStatusEl.textContent = data.message || 'Failed to load file content.';
+          browseStatusEl.className = 'deep-search-status status error';
+          return;
+        }
+        browseStatusEl.textContent = data.truncated
+          ? `Showing first ${(data.content.length / 1024).toFixed(1)} KB of ${(data.totalSize / 1024).toFixed(1)} KB (truncated).`
+          : '';
+        browseStatusEl.className = 'deep-search-status status';
+        const pre = document.createElement('pre');
+        pre.className = 'deep-search-file-pre';
+        pre.textContent = data.content;
+        fileContentEl.appendChild(pre);
+      })
+      .catch((err) => {
+        browseStatusEl.textContent = `Failed to load file content: ${err.message}`;
+        browseStatusEl.className = 'deep-search-status status error';
+      });
+  });
+
+  refreshDirectories();
+
   const formRow = document.createElement('div');
   formRow.className = 'deep-search-form';
 

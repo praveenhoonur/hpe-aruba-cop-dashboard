@@ -215,10 +215,119 @@ async function deepSearch(query) {
   };
 }
 
+// Content displayed via the directory/file browser is capped so viewing a
+// huge log doesn't load it entirely into memory or blow up the response.
+const MAX_FILE_CONTENT_BYTES = 2 * 1024 * 1024; // 2MB
+
+// Lists every distinct directory across all currently-retained uploads, for
+// the Deep Search "browse" dropdowns. Non-archive (single log/txt) uploads
+// are represented as a single synthetic "." (root) directory containing
+// just that one file, same convention used for archives with loose files at
+// their top level.
+function listDirectories() {
+  const results = [];
+  for (const upload of listActiveUploads()) {
+    const entry = registry.get(upload.uploadId);
+    if (!entry) continue;
+
+    if (!entry.isArchive) {
+      results.push({ uploadId: upload.uploadId, uploadLabel: entry.label, dir: '.' });
+      continue;
+    }
+
+    const files = walkFiles(entry.root, entry.root);
+    const dirs = new Set();
+    for (const file of files) {
+      dirs.add(path.dirname(file.relPath));
+    }
+    Array.from(dirs)
+      .sort((a, b) => a.localeCompare(b))
+      .forEach((dir) => results.push({ uploadId: upload.uploadId, uploadLabel: entry.label, dir }));
+  }
+  return results;
+}
+
+// Resolves an upload + relative directory to the list of files directly
+// inside it (not recursive — each directory is its own dropdown entry).
+function listFilesInDirectory(uploadId, dir) {
+  const entry = registry.get(uploadId);
+  if (!entry) return null;
+
+  if (!entry.isArchive) {
+    return [{ relPath: path.basename(entry.root), size: safeStatSize(entry.root) }];
+  }
+
+  const files = walkFiles(entry.root, entry.root);
+  return files
+    .filter((f) => path.dirname(f.relPath) === dir)
+    .map((f) => ({ relPath: f.relPath, size: safeStatSize(f.fullPath) }))
+    .sort((a, b) => a.relPath.localeCompare(b.relPath));
+}
+
+function safeStatSize(fullPath) {
+  try {
+    return fs.statSync(fullPath).size;
+  } catch (err) {
+    return null;
+  }
+}
+
+// Resolves an upload + relative file path to an absolute path, guarding
+// against path traversal (e.g. "../../etc/passwd") by requiring the
+// resolved path to stay within that upload's own root directory.
+function resolveFilePath(uploadId, relPath) {
+  const entry = registry.get(uploadId);
+  if (!entry) return null;
+
+  if (!entry.isArchive) {
+    // Single-file upload: the only valid "relPath" is the file's own name.
+    if (relPath !== path.basename(entry.root)) return null;
+    return entry.root;
+  }
+
+  const resolvedRoot = path.resolve(entry.root);
+  const resolved = path.resolve(entry.root, relPath);
+  if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + path.sep)) {
+    return null; // attempted to escape the upload's own directory
+  }
+  return resolved;
+}
+
+// Reads up to MAX_FILE_CONTENT_BYTES of a file for display in the
+// directory/file browser. Returns null if the upload/file no longer exists
+// (e.g. TTL expired between listing and viewing).
+function getFileContent(uploadId, relPath) {
+  const fullPath = resolveFilePath(uploadId, relPath);
+  if (!fullPath) return null;
+
+  let stat;
+  try {
+    stat = fs.statSync(fullPath);
+  } catch (err) {
+    return null;
+  }
+  if (!stat.isFile()) return null;
+
+  const fd = fs.openSync(fullPath, 'r');
+  const size = Math.min(stat.size, MAX_FILE_CONTENT_BYTES);
+  const buffer = Buffer.alloc(size);
+  fs.readSync(fd, buffer, 0, size, 0);
+  fs.closeSync(fd);
+
+  return {
+    content: buffer.toString('utf8'),
+    totalSize: stat.size,
+    truncated: stat.size > MAX_FILE_CONTENT_BYTES,
+  };
+}
+
 module.exports = {
   registerUpload,
   listActiveUploads,
   deepSearch,
   startSweeper,
   UPLOAD_TTL_MS,
+  listDirectories,
+  listFilesInDirectory,
+  getFileContent,
 };

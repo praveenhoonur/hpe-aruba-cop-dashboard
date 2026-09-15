@@ -170,6 +170,40 @@ app.post('/api/deep-search', async (req, res) => {
   }
 });
 
+// Lists distinct directories across every currently-retained upload, used
+// to populate the Deep Search tab's "directory" dropdown.
+app.get('/api/deep-search/directories', (req, res) => {
+  res.json({ success: true, directories: deepSearch.listDirectories() });
+});
+
+// Lists files directly inside a given upload + directory, used to populate
+// the Deep Search tab's "file" dropdown once a directory is chosen.
+app.get('/api/deep-search/files', (req, res) => {
+  const { uploadId, dir } = req.query;
+  if (!uploadId || typeof dir !== 'string') {
+    return res.status(400).json({ success: false, message: 'Missing uploadId or dir.' });
+  }
+  const files = deepSearch.listFilesInDirectory(uploadId, dir);
+  if (files === null) {
+    return res.status(404).json({ success: false, message: 'Upload not found or has expired.' });
+  }
+  res.json({ success: true, files });
+});
+
+// Returns the (possibly truncated) text content of a specific file inside a
+// specific upload, for the Deep Search tab's file content viewer.
+app.get('/api/deep-search/file-content', (req, res) => {
+  const { uploadId, file } = req.query;
+  if (!uploadId || !file) {
+    return res.status(400).json({ success: false, message: 'Missing uploadId or file.' });
+  }
+  const result = deepSearch.getFileContent(uploadId, file);
+  if (result === null) {
+    return res.status(404).json({ success: false, message: 'File not found or has expired.' });
+  }
+  res.json({ success: true, ...result });
+});
+
 deepSearch.startSweeper();
 
 const server = app.listen(PORT, () => {
