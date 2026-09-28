@@ -350,10 +350,64 @@ function renderDirectoryTabPanel(tab) {
   return container;
 }
 
-// Generic top-level tab widget with two tabs: "Cluster Health Analysis"
-// (cop_sanity_logs* section details) and "Logs Analysis" (per-directory
-// grouped findings from an extracted archive). Either side may be empty,
-// in which case a placeholder message is shown instead.
+function renderIvtReports(archive) {
+  const container = document.createElement('div');
+  const reports = Array.from(
+    new Map((archive.ivtReports || []).map((report) => [report.path, report])).values(),
+  );
+
+  reports.forEach((report, index) => {
+    const wrapper = document.createElement('details');
+    wrapper.className = 'section ivt-file';
+    if (index === 0) wrapper.open = true;
+
+    const summary = document.createElement('summary');
+    const healthLabel = report.status === 'success' ? 'Healthy' : report.status === 'failure' ? 'Failed' : 'No results detected';
+    const timeRange = report.startTime || report.endTime
+      ? `<span class="ivt-time-range">Start: ${escapeHtml(report.startTime || 'Unknown')} | End: ${escapeHtml(report.endTime || 'Unknown')}</span>`
+      : '';
+    summary.innerHTML = `${escapeHtml(report.name)} <span class="ivt-status ivt-status-${report.status}">${healthLabel}</span>${timeRange}<span class="counts">${escapeHtml(report.path)}</span>`;
+    wrapper.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.className = 'section-body';
+
+    if (!report.components || report.components.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'hint';
+      empty.textContent = 'No allowlisted App/Status success or failure records were detected in this IVT file.';
+      body.appendChild(empty);
+    } else {
+      const tableWrap = document.createElement('div');
+      tableWrap.className = 'ivt-table-wrap';
+      const table = document.createElement('table');
+      table.className = 'ivt-table';
+      table.innerHTML = '<thead><tr><th>Component</th><th>Health</th><th>Checks</th><th>Details</th></tr></thead>';
+      const tbody = document.createElement('tbody');
+
+      report.components.forEach((component) => {
+        const row = document.createElement('tr');
+        const details = (component.details || []).map((detail) => {
+          const returnValue = detail.returnValue === null ? '' : `Return value ${detail.returnValue}: `;
+          return `<div><span class="ivt-line-number">Line ${detail.line}</span> ${escapeHtml(returnValue + detail.text)}</div>`;
+        }).join('');
+        row.innerHTML = `<td><strong>${escapeHtml(component.name)}</strong></td><td><span class="ivt-status ivt-status-${component.status}">${component.status === 'success' ? 'Healthy' : 'Failed'}</span></td><td>${component.checks}</td><td class="ivt-details">${details}</td>`;
+        tbody.appendChild(row);
+      });
+
+      table.appendChild(tbody);
+      tableWrap.appendChild(table);
+      body.appendChild(tableWrap);
+    }
+
+    wrapper.appendChild(body);
+    container.appendChild(wrapper);
+  });
+
+  return container;
+}
+
+// Generic top-level analysis tabs shared by the executive and deep-dive pages.
 function renderAnalysisTabsSection(analysis, archive, chartHolder) {
   const section = document.createElement('section');
   section.className = 'analysis-tabs-section';
@@ -372,6 +426,7 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder) {
   const tabs = [
     { name: 'Cluster Health Analysis' },
     { name: 'Logs Analysis' },
+    { name: 'IVT Report' },
     { name: 'Deep Search' },
   ];
 
@@ -407,6 +462,15 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder) {
         const empty = document.createElement('div');
         empty.className = 'card';
         empty.textContent = 'No directory-based archive contents were extracted for this upload.';
+        panel.appendChild(empty);
+      }
+    } else if (idx === 2) {
+      if (archive && Array.isArray(archive.ivtReports) && archive.ivtReports.length > 0) {
+        panel.appendChild(renderIvtReports(archive));
+      } else {
+        const empty = document.createElement('div');
+        empty.className = 'card';
+        empty.textContent = 'No files with "ivt" in the file name were found in this upload.';
         panel.appendChild(empty);
       }
     } else {

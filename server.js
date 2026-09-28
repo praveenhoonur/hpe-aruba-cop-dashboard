@@ -66,9 +66,9 @@ app.post('/upload', (req, res) => {
       if (isArchiveFile(req.file.originalname)) {
         extractRoot = path.join(uploadDir, 'extracted', path.basename(req.file.path));
         await extractArchive(req.file.path, req.file.originalname, extractRoot);
-        const { sanityLogAnalysis, tabs } = analyzeExtractedArchive(extractRoot);
+        const { sanityLogAnalysis, tabs, ivtReports } = analyzeExtractedArchive(extractRoot);
         analysis = sanityLogAnalysis;
-        archive = { tabs };
+        archive = { tabs, ivtReports };
       } else {
         analysis = analyzeLogFile(req.file.path, req.file.originalname);
       }

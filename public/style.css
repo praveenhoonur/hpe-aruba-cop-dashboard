@@ -679,6 +679,82 @@ footer {
   display: block;
 }
 
+.ivt-file > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ivt-status {
+  display: inline-block;
+  border-radius: 12px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.ivt-status-success {
+  color: var(--info);
+  background: var(--info-bg);
+}
+
+.ivt-status-failure {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+.ivt-status-unknown {
+  color: var(--on-surface-secondary);
+  background: var(--background);
+}
+
+.ivt-time-range {
+  color: var(--on-surface-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.ivt-table-wrap {
+  overflow-x: auto;
+}
+
+.ivt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.ivt-table th,
+.ivt-table td {
+  padding: 0.6rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #dadce0;
+}
+
+.ivt-table th {
+  color: var(--on-surface-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.ivt-details {
+  min-width: 280px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.78rem;
+  word-break: break-word;
+}
+
+.ivt-details > div + div {
+  margin-top: 0.35rem;
+}
+
+.ivt-line-number {
+  color: var(--on-surface-secondary);
+}
+
 .deep-search-availability {
   margin-bottom: 0.75rem;
 }

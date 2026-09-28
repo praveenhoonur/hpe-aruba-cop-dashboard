@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { isCopSanityLogPrefix, analyzeSanityLogFile } = require('./analyzer');
+const { analyzeIvtFile } = require('./ivtAnalyzer');
 
 // Cap per-file read to keep both processing time and memory bounded on huge
 // dumps. Large sanity-check bundles can contain thousands of pod log files
@@ -95,16 +96,24 @@ function walkFiles(dir, base) {
   return results;
 }
 
-function readTextSafe(fullPath) {
+function readTextSafe(fullPath, includeTail = false) {
   try {
     const stat = fs.statSync(fullPath);
     if (stat.size > MAX_FILE_SIZE_TO_SCAN) return '';
     const fd = fs.openSync(fullPath, 'r');
-    const size = Math.min(stat.size, MAX_READ_BYTES);
-    const buffer = Buffer.alloc(size);
-    fs.readSync(fd, buffer, 0, size, 0);
+    const headSize = Math.min(stat.size, MAX_READ_BYTES);
+    const head = Buffer.alloc(headSize);
+    fs.readSync(fd, head, 0, headSize, 0);
+
+    let text = head.toString('utf8');
+    if (includeTail && stat.size > headSize) {
+      const tailSize = Math.min(stat.size - headSize, MAX_READ_BYTES);
+      const tail = Buffer.alloc(tailSize);
+      fs.readSync(fd, tail, 0, tailSize, stat.size - tailSize);
+      text += `\n${tail.toString('utf8')}`;
+    }
     fs.closeSync(fd);
-    return buffer.toString('utf8');
+    return text;
   } catch (err) {
     return '';
   }
@@ -182,6 +191,9 @@ function analyzeFile(file) {
 // folders the archive tool added around them.
 function analyzeExtractedArchive(extractRoot) {
   const allFiles = walkFiles(extractRoot, extractRoot);
+  const ivtReports = allFiles
+    .filter((file) => path.basename(file.relPath).toLowerCase().includes('ivt'))
+    .map((file) => analyzeIvtFile(file, (fullPath) => readTextSafe(fullPath, true)));
 
   let sanityLogAnalysis = null;
   const sanityCandidate = allFiles.find((f) => isCopSanityLogPrefix(path.basename(f.relPath)));
@@ -229,7 +241,7 @@ function analyzeExtractedArchive(extractRoot) {
     return a.name.localeCompare(b.name);
   });
 
-  return { sanityLogAnalysis, tabs };
+  return { sanityLogAnalysis, tabs, ivtReports };
 }
 
 module.exports = { analyzeExtractedArchive };
