@@ -62,16 +62,32 @@ const POD_LIST_HEADERS = ['NAMESPACE', 'NAME', 'READY', 'STATUS', 'RESTARTS', 'A
 
 function tryParsePodListTable(entries) {
   if (entries.length < 2) return null;
-  const headerRaw = entries[0].text.replace(/\s+$/, '');
-  const headerMatches = [...headerRaw.matchAll(/\S+/g)];
-  const headerTokens = headerMatches.map((m) => m[0].toUpperCase());
-  if (!POD_LIST_HEADERS.every((h) => headerTokens.includes(h))) return null;
 
+  // The header row isn't always the section's first line — sections like
+  // "lspodnr: pods that are NOT Running/Completed" and "lspod: all pods,
+  // all namespaces" first echo the command that was run (e.g. "kubectl
+  // get pod --all-namespaces") before the actual column header. Search for
+  // whichever line looks like the pod-list header instead of assuming
+  // it's entries[0].
+  const headerIdx = entries.findIndex((entry) => {
+    const tokens = [...entry.text.matchAll(/\S+/g)].map((m) => m[0].toUpperCase());
+    return POD_LIST_HEADERS.every((h) => tokens.includes(h));
+  });
+  if (headerIdx === -1) return null;
+
+  const preambleText = entries
+    .slice(0, headerIdx)
+    .map((e) => e.text.trim())
+    .filter(Boolean)
+    .join('\n');
+
+  const headerRaw = entries[headerIdx].text.replace(/\s+$/, '');
+  const headerMatches = [...headerRaw.matchAll(/\S+/g)];
   const headers = headerMatches.map((m) => m[0]);
   const starts = headerMatches.map((m) => m.index);
 
   const rows = [];
-  for (let i = 1; i < entries.length; i += 1) {
+  for (let i = headerIdx + 1; i < entries.length; i += 1) {
     const raw = entries[i].text.replace(/\s+$/, '');
     if (!raw.trim()) continue;
     const cols = starts.map((start, idx) => {
@@ -86,7 +102,7 @@ function tryParsePodListTable(entries) {
   }
   if (rows.length === 0) return null;
 
-  return { headers, rows };
+  return { headers, rows, preamble: preambleText || null };
 }
 
 // Converts a `du -h`-style human size ("246M", "19G", "4.0K") to bytes

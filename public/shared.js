@@ -221,6 +221,13 @@ function renderKubectlTable(table) {
   const wrap = document.createElement('div');
   wrap.className = 'kubectl-table-wrap';
 
+  if (table.preamble) {
+    const caption = document.createElement('div');
+    caption.className = 'kubectl-table-command';
+    caption.textContent = `$ ${table.preamble}`;
+    wrap.appendChild(caption);
+  }
+
   const el = document.createElement('table');
   el.className = 'kubectl-table';
 

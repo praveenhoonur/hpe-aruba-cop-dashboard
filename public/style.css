@@ -525,6 +525,13 @@ footer {
   overflow-y: auto;
 }
 
+.kubectl-table-command {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-bottom: 0.4rem;
+}
+
 .kubectl-table {
   width: 100%;
   border-collapse: collapse;
