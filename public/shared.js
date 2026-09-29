@@ -76,6 +76,8 @@ function renderSectionsCard(analysis, chartHolder) {
       body.appendChild(renderDiskUsageByNode(section.diskUsage));
     } else if (section.containerdImageCounts) {
       body.appendChild(renderContainerdImageCounts(section.containerdImageCounts));
+    } else if (section.nodeResourceUsage) {
+      body.appendChild(renderNodeResourceUsage(section.nodeResourceUsage));
     } else if (section.table) {
       body.appendChild(renderKubectlTable(section.table));
     } else {
@@ -184,6 +186,75 @@ function renderContainerdImageCounts(containerdImageCounts) {
     countTd.textContent = String(node.count);
     tr.appendChild(hostTd);
     tr.appendChild(countTd);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  return wrap;
+}
+
+// Renders the "noderesource: node resource usage, excluding containerd
+// rows" step as a single per-node summary table (Node-FQDN / Uptime / Load
+// Average / Memory / POD Count / Disk Usage of "/dev/sda6"), instead of a
+// wall of raw `uptime`/`free -h`/`df -h` output. Memory and disk usage
+// percentages are color-coded with the same thresholds as other
+// utilization columns in the app.
+function renderNodeResourceUsage(nodeResourceUsage) {
+  const wrap = document.createElement('div');
+  wrap.className = 'kubectl-table-wrap';
+
+  const table = document.createElement('table');
+  table.className = 'kubectl-table';
+  table.innerHTML = '<thead><tr>'
+    + '<th>Node-FQDN</th>'
+    + '<th>Uptime</th>'
+    + '<th>Load Average</th>'
+    + '<th>Memory</th>'
+    + '<th>POD Count</th>'
+    + '<th>Disk Usage of "/dev/sda6"</th>'
+    + '</tr></thead>';
+
+  const tbody = document.createElement('tbody');
+  nodeResourceUsage.nodes.forEach((node) => {
+    const tr = document.createElement('tr');
+
+    const hostTd = document.createElement('td');
+    hostTd.textContent = node.host;
+    tr.appendChild(hostTd);
+
+    const uptimeTd = document.createElement('td');
+    uptimeTd.textContent = node.uptime || '—';
+    tr.appendChild(uptimeTd);
+
+    const loadTd = document.createElement('td');
+    loadTd.textContent = node.loadAverage || '—';
+    tr.appendChild(loadTd);
+
+    const memTd = document.createElement('td');
+    memTd.textContent = node.memTotal
+      ? `${node.memUsed} / ${node.memTotal}${node.memPercent != null ? ` (${node.memPercent}%)` : ''}`
+      : '—';
+    if (node.memPercent != null) {
+      const level = percentLevel(node.memPercent);
+      if (level) memTd.classList.add(`level-${level}`, 'kubectl-table-pct');
+    }
+    tr.appendChild(memTd);
+
+    const podTd = document.createElement('td');
+    podTd.textContent = node.podCount != null ? String(node.podCount) : '—';
+    tr.appendChild(podTd);
+
+    const diskTd = document.createElement('td');
+    diskTd.textContent = node.diskSize
+      ? `${node.diskUsed} / ${node.diskSize} (${node.diskUsePct}%)`
+      : '—';
+    if (node.diskUsePct != null) {
+      const level = percentLevel(node.diskUsePct);
+      if (level) diskTd.classList.add(`level-${level}`, 'kubectl-table-pct');
+    }
+    tr.appendChild(diskTd);
+
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);

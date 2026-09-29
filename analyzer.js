@@ -205,6 +205,113 @@ function tryParseContainerdImageCounts(entries) {
   return { nodes: withCounts };
 }
 
+// Converts a `free`/`df`-style human size with an IEC suffix ("503Gi",
+// "100Mi", "0B") to bytes for percentage math. Distinct from
+// parseHumanSize() above, which handles coreutils' non-IEC "246M"/"19G"
+// (no trailing "i") du -h style.
+function parseIecSize(str) {
+  const m = str.trim().match(/^([\d.]+)\s*(Ki|Mi|Gi|Ti|B)?$/i);
+  if (!m) return null;
+  const num = parseFloat(m[1]);
+  if (Number.isNaN(num)) return null;
+  const mult = { '': 1, B: 1, Ki: 1024, Mi: 1024 ** 2, Gi: 1024 ** 3, Ti: 1024 ** 4 }[m[2] || ''];
+  return num * mult;
+}
+
+// The "noderesource: node resource usage, excluding containerd rows" step
+// SSHes into each node and, per node, prints: the bare node FQDN; an
+// `uptime`-style line ("<time> up <duration>, <n> users, load average:
+// <1m>, <5m>, <15m>"); a `free -h`-style memory block (a column header
+// line, then "Mem: ..." and "Swap: ..." data lines); a `df -h`-style disk
+// block (a column header line, then one row per mounted filesystem); and
+// finally a "POD Count for <fqdn>:" line followed by the bare pod count on
+// the next line. This extracts one flat record per node — pulling out
+// uptime, load average, Mem used/total (+ percent), the /dev/sda6 disk row
+// (+ percent), and pod count — so the UI can render a single summary table
+// instead of a wall of raw command output.
+function tryParseNodeResourceUsage(entries) {
+  const hostnameRe = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*\.)+[a-zA-Z]{2,}$/;
+  const uptimeRe = /^\d{2}:\d{2}:\d{2}\s+up\s+(.+?),\s+\d+\s+users?,\s+load average:\s*(.+)$/i;
+  const memRe = /^Mem:\s+(\S+)\s+(\S+)\s+(\S+)/i;
+  const diskRe = /^\/dev\/sda6\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/i;
+  const podCountForRe = /^POD Count for\s+(\S+?):?\s*$/i;
+  const countRe = /^\d+$/;
+
+  const nodes = [];
+  let current = null;
+  let awaitingPodCount = false;
+
+  entries.forEach((entry) => {
+    const line = entry.text.trim();
+    if (!line) return;
+
+    const uptimeMatch = line.match(uptimeRe);
+    if (uptimeMatch && current && !current.uptime) {
+      current.uptime = uptimeMatch[1].trim();
+      current.loadAverage = uptimeMatch[2].trim();
+      return;
+    }
+
+    const memMatch = line.match(memRe);
+    if (memMatch && current && !current.memTotal) {
+      const [, total, used] = memMatch;
+      current.memTotal = total;
+      current.memUsed = used;
+      const totalBytes = parseIecSize(total);
+      const usedBytes = parseIecSize(used);
+      current.memPercent = totalBytes && usedBytes != null
+        ? Math.round((usedBytes / totalBytes) * 100)
+        : null;
+      return;
+    }
+
+    const diskMatch = line.match(diskRe);
+    if (diskMatch && current && !current.diskSize) {
+      const [, size, used, , usePct] = diskMatch;
+      current.diskSize = size;
+      current.diskUsed = used;
+      current.diskUsePct = usePct.replace('%', '');
+      return;
+    }
+
+    const podForMatch = line.match(podCountForRe);
+    if (podForMatch) {
+      awaitingPodCount = true;
+      return;
+    }
+
+    if (awaitingPodCount && countRe.test(line) && current && current.podCount === null) {
+      current.podCount = Number(line);
+      awaitingPodCount = false;
+      return;
+    }
+
+    if (hostnameRe.test(line)) {
+      current = {
+        host: line,
+        uptime: null,
+        loadAverage: null,
+        memTotal: null,
+        memUsed: null,
+        memPercent: null,
+        diskSize: null,
+        diskUsed: null,
+        diskUsePct: null,
+        podCount: null,
+      };
+      nodes.push(current);
+      awaitingPodCount = false;
+    }
+    // Anything else (Swap line, column header lines, non-sda6 filesystem
+    // rows, "users" noise, etc.) is ignored.
+  });
+
+  const withData = nodes.filter((n) => n.uptime || n.memTotal || n.diskSize || n.podCount !== null);
+  if (withData.length === 0) return null;
+
+  return { nodes: withData };
+}
+
 function parseSections(content) {
   const lines = content.split(/\r?\n/);
   const sections = [];
@@ -261,11 +368,26 @@ function parseSections(content) {
     const containerdImageCounts = isContainerdImageCountSection
       ? tryParseContainerdImageCounts(entries)
       : null;
-    const table = diskUsage || containerdImageCounts
+    // Matches "noderesource: node resource usage, excluding containerd
+    // rows" and similar variants (title contains "noderesource", or
+    // "node" + "resource" + "usage").
+    const isNodeResourceSection = /noderesource/i.test(section.title)
+      || (/\bnode\b/i.test(section.title) && /\bresource\b/i.test(section.title) && /\busage\b/i.test(section.title));
+    const nodeResourceUsage = isNodeResourceSection ? tryParseNodeResourceUsage(entries) : null;
+    const table = diskUsage || containerdImageCounts || nodeResourceUsage
       ? null
       : tryParsePodListTable(entries) || tryParseTable(entries);
 
-    return { title: section.title, status, counts, entries, table, diskUsage, containerdImageCounts };
+    return {
+      title: section.title,
+      status,
+      counts,
+      entries,
+      table,
+      diskUsage,
+      containerdImageCounts,
+      nodeResourceUsage,
+    };
   });
 }
 
