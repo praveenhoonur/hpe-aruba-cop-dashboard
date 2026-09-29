@@ -1,4 +1,5 @@
 require('dotenv').config();
+const crypto = require('crypto');
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -12,6 +13,46 @@ const deepSearch = require('./deepSearch');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '10.97.48.59';
+const DASHBOARD_USER = process.env.DASHBOARD_USER;
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
+
+function dashboardAuth(req, res, next) {
+  const authorization = req.headers.authorization || '';
+  const encodedCredentials = authorization.startsWith('Basic ') ? authorization.slice(6) : '';
+
+  let suppliedUser = '';
+  let suppliedPassword = '';
+  try {
+    const decoded = Buffer.from(encodedCredentials, 'base64').toString('utf8');
+    const separator = decoded.indexOf(':');
+    if (separator >= 0) {
+      suppliedUser = decoded.slice(0, separator);
+      suppliedPassword = decoded.slice(separator + 1);
+    }
+  } catch (err) {
+    // Treat malformed credentials as an authentication failure.
+  }
+
+  const matches = (supplied, expected) => {
+    if (!expected) return false;
+    const suppliedBuffer = Buffer.from(supplied);
+    const expectedBuffer = Buffer.from(expected);
+    return suppliedBuffer.length === expectedBuffer.length
+      && crypto.timingSafeEqual(suppliedBuffer, expectedBuffer);
+  };
+
+  if (matches(suppliedUser, DASHBOARD_USER) && matches(suppliedPassword, DASHBOARD_PASSWORD)) {
+    return next();
+  }
+
+  res.set('WWW-Authenticate', 'Basic realm="HPE Aruba COP Dashboard"');
+  return res.status(401).send('Authentication required.');
+}
+
+if (!DASHBOARD_USER || !DASHBOARD_PASSWORD) {
+  throw new Error('DASHBOARD_USER and DASHBOARD_PASSWORD must be configured before starting the dashboard.');
+}
 
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -46,6 +87,7 @@ const upload = multer({
   limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
 });
 
+app.use(dashboardAuth);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '2mb' }));
 
@@ -206,8 +248,8 @@ app.get('/api/deep-search/file-content', (req, res) => {
 
 deepSearch.startSweeper();
 
-const server = app.listen(PORT, () => {
-  console.log(`HPE Aruba COP Dashboard running at http://localhost:${PORT}`);
+const server = app.listen(PORT, HOST, () => {
+  console.log(`HPE Aruba COP Dashboard running at http://${HOST}:${PORT}`);
 });
 
 // Node's http server enforces a default 5-minute limit (requestTimeout) on
