@@ -203,6 +203,16 @@ function percentLevel(value) {
   return 'info';
 }
 
+// Colors a pod STATUS-style cell (e.g. from `kubectl get pods`) using the
+// same error/warn/info convention as the rest of the app: crash/failure
+// states are red, transitional states are amber, healthy states are green.
+function statusLevel(value) {
+  if (/\b(error|crashloopbackoff|imagepullbackoff|failed|evicted|oomkilled)\b/i.test(value)) return 'error';
+  if (/\b(pending|warning|unknown|terminating|containercreating|init:)\b/i.test(value)) return 'warn';
+  if (/\b(running|completed|succeeded|ready)\b/i.test(value)) return 'info';
+  return null;
+}
+
 // Renders whitespace-column kubectl-style output (e.g. `kubectl top nodes`,
 // `kubectl get nodes -o wide`) as a proper HTML table instead of raw text.
 // Any column whose header contains "%" gets its cells color-coded by
@@ -225,6 +235,7 @@ function renderKubectlTable(table) {
   el.appendChild(thead);
 
   const percentCols = table.headers.map((h) => h.includes('%'));
+  const statusCols = table.headers.map((h) => /^status$/i.test(h.trim()));
 
   const tbody = document.createElement('tbody');
   table.rows.forEach((row) => {
@@ -235,6 +246,9 @@ function renderKubectlTable(table) {
       if (percentCols[i]) {
         const level = percentLevel(cell);
         if (level) td.classList.add(`level-${level}`, 'kubectl-table-pct');
+      } else if (statusCols[i]) {
+        const level = statusLevel(cell);
+        if (level) td.classList.add(`level-${level}`);
       }
       tr.appendChild(td);
     });

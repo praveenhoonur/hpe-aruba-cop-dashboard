@@ -50,6 +50,45 @@ function tryParseTable(entries) {
   return { headers, rows };
 }
 
+// `kubectl get pods` output (as seen in the "lspodnr"/"lspod" style
+// sections: NAMESPACE / NAME / READY / STATUS / RESTARTS / AGE) pads long
+// pod names to whatever width they need, which can shrink the gap before
+// the next column down to a single space and break the generic 2+-space
+// split above. Since kubectl still left-aligns every column to start at
+// the same character offset as its header, we instead slice each data row
+// at the header's column start positions — robust regardless of how wide
+// any individual value is.
+const POD_LIST_HEADERS = ['NAMESPACE', 'NAME', 'READY', 'STATUS', 'RESTARTS', 'AGE'];
+
+function tryParsePodListTable(entries) {
+  if (entries.length < 2) return null;
+  const headerRaw = entries[0].text.replace(/\s+$/, '');
+  const headerMatches = [...headerRaw.matchAll(/\S+/g)];
+  const headerTokens = headerMatches.map((m) => m[0].toUpperCase());
+  if (!POD_LIST_HEADERS.every((h) => headerTokens.includes(h))) return null;
+
+  const headers = headerMatches.map((m) => m[0]);
+  const starts = headerMatches.map((m) => m.index);
+
+  const rows = [];
+  for (let i = 1; i < entries.length; i += 1) {
+    const raw = entries[i].text.replace(/\s+$/, '');
+    if (!raw.trim()) continue;
+    const cols = starts.map((start, idx) => {
+      const end = idx + 1 < starts.length ? starts[idx + 1] : raw.length;
+      return raw.slice(start, end).trim();
+    });
+    // A line where every sliced column is empty isn't actually a data
+    // row for this table (e.g. a stray note) — skip it rather than
+    // corrupting the table with a blank row.
+    if (cols.every((c) => c === '')) continue;
+    rows.push(cols);
+  }
+  if (rows.length === 0) return null;
+
+  return { headers, rows };
+}
+
 // Converts a `du -h`-style human size ("246M", "19G", "4.0K") to bytes
 // (binary/1024-based, matching coreutils' -h output) for sorting/scaling.
 function parseHumanSize(str) {
@@ -206,7 +245,9 @@ function parseSections(content) {
     const containerdImageCounts = isContainerdImageCountSection
       ? tryParseContainerdImageCounts(entries)
       : null;
-    const table = diskUsage || containerdImageCounts ? null : tryParseTable(entries);
+    const table = diskUsage || containerdImageCounts
+      ? null
+      : tryParsePodListTable(entries) || tryParseTable(entries);
 
     return { title: section.title, status, counts, entries, table, diskUsage, containerdImageCounts };
   });
