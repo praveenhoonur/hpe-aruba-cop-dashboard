@@ -197,7 +197,13 @@ function parseSections(content) {
     else if (counts.info === 0) status = 'neutral';
 
     const diskUsage = /disk usage/i.test(section.title) ? tryParseDiskUsageByNode(entries) : null;
-    const containerdImageCounts = /containerd images count/i.test(section.title)
+    // Matches variants like "containerd images count", "Per-node containerd
+    // image count", "containerd image counts", etc. — any title mentioning
+    // both "containerd" and "image"/"images" alongside "count"/"counts".
+    const isContainerdImageCountSection = /containerd/i.test(section.title)
+      && /images?/i.test(section.title)
+      && /counts?/i.test(section.title);
+    const containerdImageCounts = isContainerdImageCountSection
       ? tryParseContainerdImageCounts(entries)
       : null;
     const table = diskUsage || containerdImageCounts ? null : tryParseTable(entries);
