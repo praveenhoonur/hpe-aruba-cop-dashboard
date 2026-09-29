@@ -109,6 +109,47 @@ function tryParseDiskUsageByNode(entries) {
   return { nodes: nonEmpty };
 }
 
+// The "containerd images count" step SSHes into each node and prints the
+// bare node FQDN, followed by zero or more unrelated noise lines (e.g.
+// containerd's own deprecation warnings emitted on stderr), followed by a
+// single bare integer: the `ctr images ls | wc -l`-style image count for
+// that node. This turns that interleaved block into
+// { nodes: [{ host, count }] } so the UI can render a clean
+// Node-FQDN / Images Count table.
+function tryParseContainerdImageCounts(entries) {
+  const hostnameRe = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*\.)+[a-zA-Z]{2,}$/;
+  const countRe = /^\d+$/;
+  const nodes = [];
+  let current = null;
+  let matchedAny = false;
+
+  for (const entry of entries) {
+    const line = entry.text.trim();
+    if (!line) continue;
+
+    if (countRe.test(line) && current && current.count === null) {
+      current.count = Number(line);
+      matchedAny = true;
+      continue;
+    }
+
+    if (hostnameRe.test(line)) {
+      current = { host: line, count: null };
+      nodes.push(current);
+      continue;
+    }
+
+    // Anything else (containerd log/warning lines, etc.) is noise between
+    // a node's hostname and its count line — ignore and keep `current`.
+  }
+
+  if (!matchedAny) return null;
+  const withCounts = nodes.filter((n) => n.count !== null);
+  if (withCounts.length === 0) return null;
+
+  return { nodes: withCounts };
+}
+
 function parseSections(content) {
   const lines = content.split(/\r?\n/);
   const sections = [];
@@ -156,9 +197,12 @@ function parseSections(content) {
     else if (counts.info === 0) status = 'neutral';
 
     const diskUsage = /disk usage/i.test(section.title) ? tryParseDiskUsageByNode(entries) : null;
-    const table = diskUsage ? null : tryParseTable(entries);
+    const containerdImageCounts = /containerd images count/i.test(section.title)
+      ? tryParseContainerdImageCounts(entries)
+      : null;
+    const table = diskUsage || containerdImageCounts ? null : tryParseTable(entries);
 
-    return { title: section.title, status, counts, entries, table, diskUsage };
+    return { title: section.title, status, counts, entries, table, diskUsage, containerdImageCounts };
   });
 }
 

@@ -74,6 +74,8 @@ function renderSectionsCard(analysis, chartHolder) {
     body.className = 'section-body';
     if (section.diskUsage) {
       body.appendChild(renderDiskUsageByNode(section.diskUsage));
+    } else if (section.containerdImageCounts) {
+      body.appendChild(renderContainerdImageCounts(section.containerdImageCounts));
     } else if (section.table) {
       body.appendChild(renderKubectlTable(section.table));
     } else {
@@ -159,6 +161,35 @@ function renderDiskUsageByNode(diskUsage) {
   });
 
   return container;
+}
+
+// Renders the "containerd images count" step as a simple Node-FQDN /
+// Images Count table, sorted with the highest image count first so nodes
+// most likely to need cleanup stand out.
+function renderContainerdImageCounts(containerdImageCounts) {
+  const wrap = document.createElement('div');
+  wrap.className = 'kubectl-table-wrap';
+
+  const table = document.createElement('table');
+  table.className = 'kubectl-table';
+  table.innerHTML = '<thead><tr><th>Node-FQDN</th><th>Images Count</th></tr></thead>';
+
+  const tbody = document.createElement('tbody');
+  const sorted = [...containerdImageCounts.nodes].sort((a, b) => b.count - a.count);
+  sorted.forEach((node) => {
+    const tr = document.createElement('tr');
+    const hostTd = document.createElement('td');
+    hostTd.textContent = node.host;
+    const countTd = document.createElement('td');
+    countTd.textContent = String(node.count);
+    tr.appendChild(hostTd);
+    tr.appendChild(countTd);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  return wrap;
 }
 
 // Thresholds for coloring percentage-style columns (CPU%, MEMORY%, DISK%
