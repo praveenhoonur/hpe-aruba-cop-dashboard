@@ -60,11 +60,14 @@ jobs:
 
       - name: Verify deployment is live
         env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
         run: |
           set -e
-          status=$(curl -s -o /dev/null -w "%{http_code}" -u "$DEPLOY_USER:$DEPLOY_PASSWORD" "http://localhost:3000/")
+          # The app binds to the host's specific IP (not 127.0.0.1), so the
+          # smoke test must target DEPLOY_HOST rather than localhost.
+          status=$(curl -s -o /dev/null -w "%{http_code}" -u "$DEPLOY_USER:$DEPLOY_PASSWORD" "http://$DEPLOY_HOST:3000/")
           echo "Homepage status: $status"
           if [ "$status" != "200" ]; then
             echo "Deployment verification failed (expected 200, got $status)"
