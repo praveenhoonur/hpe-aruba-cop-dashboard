@@ -1,0 +1,81 @@
+name: Deploy to production
+
+# Runs on every push to main: validates the code, then deploys it to the
+# production host (10.97.48.59) and restarts the systemd service.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax-check all JavaScript files
+        run: |
+          set -e
+          # Browser-facing scripts under public/ reference window/document and
+          # can't be safely required(), so they're parsed (not executed) via
+          # `new Function(...)` instead of `node --check`.
+          find . -name '*.js' \
+            -not -path './node_modules/*' \
+            -not -path './public/*' \
+            -print0 | xargs -0 -n1 node --check
+          for f in public/*.js; do
+            node -e "new Function(require('fs').readFileSync('$f', 'utf8')); console.log('$f OK')"
+          done
+
+      - name: Install sshpass
+        run: sudo apt-get update -y && sudo apt-get install -y sshpass
+
+      - name: Deploy to production host
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+        run: |
+          set -e
+          sshpass -p "$DEPLOY_PASSWORD" rsync -avz \
+            --exclude 'node_modules' \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'uploads/*' \
+            --exclude '.env' \
+            -e "ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no" \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:~/hpe-aruba-cop-dashboard/"
+
+      - name: Restart dashboard service
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+        run: |
+          set -e
+          sshpass -p "$DEPLOY_PASSWORD" ssh -tt \
+            -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "echo '$DEPLOY_PASSWORD' | sudo -S systemctl restart hpe-aruba-cop-dashboard.service && sleep 2 && sudo systemctl is-active hpe-aruba-cop-dashboard.service"
+
+      - name: Verify deployment is live
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+        run: |
+          set -e
+          status=$(curl -s -o /dev/null -w "%{http_code}" -u "$DEPLOY_USER:$DEPLOY_PASSWORD" "http://$DEPLOY_HOST:3000/")
+          echo "Homepage status: $status"
+          if [ "$status" != "200" ]; then
+            echo "Deployment verification failed (expected 200, got $status)"
+            exit 1
+          fi
