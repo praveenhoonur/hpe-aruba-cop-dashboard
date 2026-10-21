@@ -16,18 +16,26 @@ Provides a direct download link (and a "View source on GitHub" link) for
 operators run on-prem to collect `cop_sanity_logs*.log` bundles for upload.
 
 ### 2. Upload Log File
-File-upload form for submitting a collected log bundle for analysis.
+File-upload form for submitting a collected log bundle (or an individual
+file) for analysis.
 
-- **Accepted file types:** `.log`, `.txt`, `.tar`, `.tar.gz`, `.tar.zip`/`.zip`
+- **Accepted file types:** `.log`, `.txt`, `.tar`, `.tar.gz`, `.tar.zip`/`.zip`,
+  `.har`, `.csv`, `.xls`, or a file with **no extension at all** (e.g.
+  `messages`, `syslog` — treated as plain text/log content).
 - **Button:** "Upload & Analyse" — submits the file to `POST /upload`,
   which parses it (and, for archives, extracts and analyzes the contents)
   and renders the Executive Summary + Detailed Analysis tabs below.
+- If a file can't be parsed (e.g. invalid/malformed JSON in a `.har`, an
+  unreadable/corrupted `.xls` workbook, an empty file), the relevant tab
+  shows a clear `Parser error: ...` message explaining why, instead of
+  failing silently or showing a generic failure.
 - **Reset** clears the current analysis and returns the page to its
   empty/initial state.
 
 ### 3. Executive Summary (`#execSummary`)
-Rendered only after a successful upload. Gives a one-glance, high-level
-verdict on cluster health:
+Rendered only after a successful upload of a `cop_sanity_logs*.log` file
+(directly or inside an archive). Gives a one-glance, high-level verdict on
+cluster health:
 
 - **Verdict banner** — overall status (`error` / `warn` / `info`) with a
   plain-English summary sentence (e.g. "3 errors detected — immediate
@@ -45,8 +53,13 @@ verdict on cluster health:
   Copilot CLI from the parsed analysis. Not run automatically because it
   can take 1–2 minutes per request.
 
+For uploads that aren't a `cop_sanity_logs*.log` file (generic `.log`/
+`.txt`/no-extension, `.har`, `.csv`, `.xls`, or an archive with no sanity
+log inside), this section is skipped and the Detailed Analysis tabs below
+are shown directly.
+
 ### 4. Detailed Analysis tabs (`#analysisTabs`)
-A tab bar with four tabs, shared between the home page and the (currently
+A tab bar with six tabs, shared between the home page and the (currently
 unlinked/legacy) Deep-Dive page:
 
 #### a. Cluster Health Analysis
@@ -82,7 +95,46 @@ supported app types (e.g. `replace_node`, `add_node`, `ipsec`, `dns`,
 `ntp`, `etcd`, `disk`, `pv`, `postgres`, etc.) with pass/fail status per
 check.
 
-#### d. Deep Search
+#### d. File Analysis
+Only populated for an upload that is **not** a `cop_sanity_logs*.log` file
+and **not** an archive — i.e. a standalone generic `.log`/`.txt`/
+no-extension file, `.har`, `.csv`, or `.xls` upload. Shows a type-specific
+summary:
+- **Generic log/text** (`.log`, `.txt`, no extension) — severity counts
+  (error/warn/info/neutral), the top recurring error/warning patterns
+  (near-duplicate lines collapsed by normalizing timestamps/IPs/IDs), and
+  the full colour-highlighted line list.
+- **`.har`** — request-count summary by HTTP status bucket (2xx/3xx/4xx/
+  5xx), top domains, a Failed Requests table, a Slowest Requests table,
+  and the full request table. (The API-level breakdown for `.har` files
+  lives in its own **API Analysis** tab — see below.)
+- **`.csv`** — row/column counts, numeric column min/max/avg stats, and
+  the full table (with automatic colour-highlighting for a `Status`/
+  `Level` column, if present).
+- **`.xls`** — one collapsible section per worksheet, each rendered as a
+  table.
+
+#### e. API Analysis
+Populated whenever one or more `.har` file(s) are found in the upload —
+either a standalone `.har` upload, or any `.har` file(s) found anywhere
+inside an extracted archive bundle (in the latter case, requests from all
+`.har` files found are merged into one combined report). Groups requests
+by exact `METHOD + full URL` and shows:
+- **Top 20 APIs Consumed** — ranked by request count.
+- **Slow / Stressed APIs** — endpoints whose average or peak response
+  time is at/above 2000ms, ranked by (avg time × request count) so an
+  endpoint that's both frequently called and slow ranks above a one-off
+  slow outlier.
+- **Timeout APIs** — endpoints with at least one request that had no
+  response (HTTP status 0) or took at/above 10000ms, ranked by timeout
+  count.
+- **Top 10 APIs — HTTP 5xx / 4xx / 3xx** — three separate ranked lists of
+  the endpoints hitting each status bucket most often.
+If `.har` file(s) are present in an archive but none could be parsed
+(e.g. malformed JSON), a `Parser error: ...` message explains why instead
+of showing an empty tab.
+
+#### f. Deep Search
 Independent of the current upload's analysis — lets you search across the
 raw/extracted content of **any** file uploaded in the last 30 minutes
 (server-side retention window; see `deepSearch.js`). Supports plain
@@ -108,8 +160,9 @@ from the home page's navigation; reachable only by direct URL.
 | `server.js` | Express app: routes for upload, Copilot narrative, RCA lookup, and all Deep Search endpoints. |
 | `analyzer.js` | Parses a single `cop_sanity_logs*.log` file into sections, builds the summary/KPI/chart data. |
 | `archiveExtractor.js` | Extracts `.tar`/`.tar.gz`/`.zip` uploads to a temp directory. |
-| `archiveAnalyzer.js` | Walks an extracted archive, analyzing any `cop_sanity_logs*` and `*ivt*` files found inside. |
+| `archiveAnalyzer.js` | Walks an extracted archive, analyzing any `cop_sanity_logs*` and `*ivt*` files found inside, and scanning for any `.har` file(s) to build a combined API Analysis for the bundle. |
 | `ivtAnalyzer.js` | Parses IVT (Install Verification Test) report files. |
+| `fileAnalyzer.js` | Analyzes a standalone upload that isn't a `cop_sanity_logs*.log` file or an archive: generic `.log`/`.txt`/no-extension content, `.har` (including its API-level breakdown), `.csv`, and `.xls`. Returns a clear `Parser error: ...` message when a file can't be parsed. |
 | `copilotNarrator.js` | Calls the headless GitHub Copilot CLI to generate the AI Executive Briefing text. |
 | `rcaLookup.js` | Cross-references detected issues against Jira/Confluence for related tickets/docs. |
 | `deepSearch.js` | In-memory index + TTL eviction powering the Deep Search tab. |
