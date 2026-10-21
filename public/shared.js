@@ -547,68 +547,74 @@ function renderIvtReports(archive) {
 // fileAnalyzer.js; each `kind` gets its own renderer below.
 // ---------------------------------------------------------------------------
 
-function renderFileAnalysisTab(fileAnalysis, archiveApiAnalysis) {
+function renderFileAnalysisTab(fileAnalysis) {
   const container = document.createElement('div');
-  let rendered = false;
 
-  if (fileAnalysis) {
-    if (fileAnalysis.kind === 'error') {
-      const errCard = document.createElement('div');
-      errCard.className = 'card';
-      errCard.innerHTML = `<p class="level-error">${escapeHtml(fileAnalysis.message || 'Failed to analyze this file.')}</p>`;
-      container.appendChild(errCard);
-    } else {
-      const heading = document.createElement('h3');
-      heading.textContent = `File Analysis: ${fileAnalysis.fileName}`;
-      container.appendChild(heading);
-
-      if (fileAnalysis.kind === 'genericLog') {
-        container.appendChild(renderGenericLogAnalysis(fileAnalysis));
-      } else if (fileAnalysis.kind === 'har') {
-        container.appendChild(renderHarAnalysis(fileAnalysis));
-      } else if (fileAnalysis.kind === 'csv') {
-        container.appendChild(renderCsvAnalysis(fileAnalysis));
-      } else if (fileAnalysis.kind === 'xls') {
-        container.appendChild(renderXlsAnalysis(fileAnalysis));
-      }
-    }
-    rendered = true;
-  }
-
-  // Archives (.tar/.tar.gz/.tar.zip/.zip) don't produce a single
-  // `fileAnalysis`, but may contain one or more .har files anywhere inside
-  // — show the combined API Analysis for those here too, so the "top APIs
-  // consumed / slow / timeout / 4xx / 5xx / 3xx" breakdown isn't limited to
-  // standalone .har uploads.
-  if (archiveApiAnalysis) {
-    if (archiveApiAnalysis.error) {
-      const errCard = document.createElement('div');
-      errCard.className = 'card';
-      errCard.innerHTML = `<p class="level-error">${escapeHtml(archiveApiAnalysis.message)}</p>`;
-      container.appendChild(errCard);
-    } else {
-      const heading2 = document.createElement('h3');
-      heading2.textContent = `API Analysis — ${archiveApiAnalysis.sourceFiles} .har file(s) in this bundle (${archiveApiAnalysis.totalRequests} request(s))`;
-      container.appendChild(heading2);
-      container.appendChild(renderApiAnalysisSection(archiveApiAnalysis));
-    }
-    rendered = true;
-  }
-
-  if (!rendered) {
+  if (!fileAnalysis) {
     container.className = 'card';
     container.textContent = 'No generic .log/.txt, .har, .csv, or .xls file was found in this upload.';
+    return container;
   }
 
+  if (fileAnalysis.kind === 'error') {
+    container.className = 'card';
+    container.innerHTML = `<p class="level-error">${escapeHtml(fileAnalysis.message || 'Failed to analyze this file.')}</p>`;
+    return container;
+  }
+
+  const heading = document.createElement('h3');
+  heading.textContent = `File Analysis: ${fileAnalysis.fileName}`;
+  container.appendChild(heading);
+
+  if (fileAnalysis.kind === 'genericLog') {
+    container.appendChild(renderGenericLogAnalysis(fileAnalysis));
+  } else if (fileAnalysis.kind === 'har') {
+    container.appendChild(renderHarAnalysis(fileAnalysis));
+  } else if (fileAnalysis.kind === 'csv') {
+    container.appendChild(renderCsvAnalysis(fileAnalysis));
+  } else if (fileAnalysis.kind === 'xls') {
+    container.appendChild(renderXlsAnalysis(fileAnalysis));
+  }
+
+  return container;
+}
+
+// "API Analysis" tab: the API-level breakdown (top-20 consumed endpoints,
+// slow/stressed endpoints, timeouts, and top endpoints per HTTP status
+// bucket) extracted from any .har file(s) in this upload — whether it was a
+// standalone .har upload (harApiAnalysis) or one or more .har files found
+// inside an archive bundle (archiveApiAnalysis).
+function renderApiAnalysisTab(harApiAnalysis, archiveApiAnalysis) {
+  const container = document.createElement('div');
+
+  if (harApiAnalysis) {
+    container.appendChild(renderApiAnalysisSection(harApiAnalysis));
+    return container;
+  }
+
+  if (archiveApiAnalysis) {
+    if (archiveApiAnalysis.error) {
+      container.className = 'card';
+      container.innerHTML = `<p class="level-error">${escapeHtml(archiveApiAnalysis.message)}</p>`;
+    } else {
+      const heading = document.createElement('h3');
+      heading.textContent = `${archiveApiAnalysis.sourceFiles} .har file(s) found in this bundle (${archiveApiAnalysis.totalRequests} request(s))`;
+      container.appendChild(heading);
+      container.appendChild(renderApiAnalysisSection(archiveApiAnalysis));
+    }
+    return container;
+  }
+
+  container.className = 'card';
+  container.textContent = 'No .har file was found in this upload, so no API-level analysis is available.';
   return container;
 }
 
 // Renders the API-level breakdown built by fileAnalyzer.js's
 // buildApiAnalysis(): top-20 most-consumed endpoints, slow/stressed
 // endpoints, endpoints hitting timeouts, and the top endpoints per HTTP
-// status bucket (5xx/4xx/3xx). Shared between a standalone .har upload
-// (renderHarAnalysis) and an archive bundle containing .har file(s)
-// (renderFileAnalysisTab).
+// status bucket (5xx/4xx/3xx). Shared between a standalone .har upload and
+// an archive bundle containing .har file(s) — see renderApiAnalysisTab.
 function renderApiAnalysisSection(apiAnalysis) {
   const wrap = document.createElement('div');
 
@@ -755,10 +761,6 @@ function renderHarAnalysis(data) {
     wrap.appendChild(domCard);
   }
 
-  if (data.apiAnalysis) {
-    wrap.appendChild(renderApiAnalysisSection(data.apiAnalysis));
-  }
-
   if (data.failedTable && data.failedTable.rows.length > 0) {
     const failedWrap = document.createElement('details');
     failedWrap.className = 'section';
@@ -885,6 +887,7 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder, fileAnalysis)
     { name: 'Logs Analysis' },
     { name: 'IVT Report' },
     { name: 'File Analysis' },
+    { name: 'API Analysis' },
     { name: 'Deep Search' },
   ];
 
@@ -932,7 +935,10 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder, fileAnalysis)
         panel.appendChild(empty);
       }
     } else if (idx === 3) {
-      panel.appendChild(renderFileAnalysisTab(fileAnalysis, archive && archive.apiAnalysis));
+      panel.appendChild(renderFileAnalysisTab(fileAnalysis));
+    } else if (idx === 4) {
+      const harFileAnalysis = fileAnalysis && fileAnalysis.kind === 'har' ? fileAnalysis.apiAnalysis : null;
+      panel.appendChild(renderApiAnalysisTab(harFileAnalysis, archive && archive.apiAnalysis));
     } else {
       panel.appendChild(renderDeepSearchTab());
     }
