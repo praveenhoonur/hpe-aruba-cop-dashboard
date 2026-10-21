@@ -49,48 +49,55 @@ function normalizeSignature(text) {
 }
 
 function analyzeGenericLog(content, originalName) {
-  const allLines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  const scanned = allLines.slice(0, MAX_LOG_LINES_SCANNED);
-  const entries = scanned.map((text) => ({ text, level: detectLevel(text) }));
+  try {
+    const allLines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
+    if (allLines.length === 0) {
+      return { kind: 'error', fileName: originalName, message: `Parser error: "${originalName}" appears to be empty.` };
+    }
+    const scanned = allLines.slice(0, MAX_LOG_LINES_SCANNED);
+    const entries = scanned.map((text) => ({ text, level: detectLevel(text) }));
 
-  const counts = entries.reduce(
-    (acc, e) => {
-      acc[e.level] = (acc[e.level] || 0) + 1;
-      return acc;
-    },
-    { error: 0, warn: 0, info: 0, neutral: 0 }
-  );
+    const counts = entries.reduce(
+      (acc, e) => {
+        acc[e.level] = (acc[e.level] || 0) + 1;
+        return acc;
+      },
+      { error: 0, warn: 0, info: 0, neutral: 0 }
+    );
 
-  let status = 'info';
-  if (counts.error > 0) status = 'error';
-  else if (counts.warn > 0) status = 'warn';
-  else if (counts.info === 0) status = 'neutral';
+    let status = 'info';
+    if (counts.error > 0) status = 'error';
+    else if (counts.warn > 0) status = 'warn';
+    else if (counts.info === 0) status = 'neutral';
 
-  const sigMap = new Map();
-  entries
-    .filter((e) => e.level === 'error' || e.level === 'warn')
-    .forEach((e) => {
-      const pattern = normalizeSignature(e.text);
-      const existing = sigMap.get(pattern);
-      if (existing) existing.count += 1;
-      else sigMap.set(pattern, { pattern, sample: e.text, level: e.level, count: 1 });
-    });
-  const topSignatures = Array.from(sigMap.values())
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 20);
+    const sigMap = new Map();
+    entries
+      .filter((e) => e.level === 'error' || e.level === 'warn')
+      .forEach((e) => {
+        const pattern = normalizeSignature(e.text);
+        const existing = sigMap.get(pattern);
+        if (existing) existing.count += 1;
+        else sigMap.set(pattern, { pattern, sample: e.text, level: e.level, count: 1 });
+      });
+    const topSignatures = Array.from(sigMap.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20);
 
-  return {
-    kind: 'genericLog',
-    fileName: originalName,
-    totalLines: allLines.length,
-    linesScanned: scanned.length,
-    truncated: allLines.length > MAX_LOG_LINES_SCANNED,
-    counts,
-    status,
-    topSignatures,
-    entries: entries.slice(0, MAX_LOG_ENTRIES_RETURNED),
-    entriesTruncated: entries.length > MAX_LOG_ENTRIES_RETURNED,
-  };
+    return {
+      kind: 'genericLog',
+      fileName: originalName,
+      totalLines: allLines.length,
+      linesScanned: scanned.length,
+      truncated: allLines.length > MAX_LOG_LINES_SCANNED,
+      counts,
+      status,
+      topSignatures,
+      entries: entries.slice(0, MAX_LOG_ENTRIES_RETURNED),
+      entriesTruncated: entries.length > MAX_LOG_ENTRIES_RETURNED,
+    };
+  } catch (err) {
+    return { kind: 'error', fileName: originalName, message: `Parser error: unable to parse "${originalName}" as text (${err.message}). It may be a binary file rather than plain text.` };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -102,10 +109,14 @@ function analyzeHar(content, originalName) {
   try {
     parsed = JSON.parse(content);
   } catch (err) {
-    return { kind: 'error', fileName: originalName, message: `Invalid HAR/JSON file: ${err.message}` };
+    return { kind: 'error', fileName: originalName, message: `Parser error: "${originalName}" is not valid JSON (${err.message}). A .har file must be a valid HTTP Archive export.` };
   }
 
-  const rawEntries = parsed && parsed.log && Array.isArray(parsed.log.entries) ? parsed.log.entries : [];
+  if (!parsed || !parsed.log || !Array.isArray(parsed.log.entries)) {
+    return { kind: 'error', fileName: originalName, message: `Parser error: "${originalName}" does not look like a valid HAR file — expected a top-level "log.entries" array.` };
+  }
+
+  const rawEntries = parsed.log.entries;
   const statusBuckets = { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0, other: 0 };
 
   const rows = rawEntries.map((e) => {
@@ -200,43 +211,50 @@ function parseCsvLine(line) {
 }
 
 function analyzeCsv(content, originalName) {
-  const lines = content.split(/\r?\n/).filter((l) => l.length > 0);
-  if (lines.length === 0) {
-    return { kind: 'csv', fileName: originalName, empty: true, status: 'neutral' };
+  try {
+    const lines = content.split(/\r?\n/).filter((l) => l.length > 0);
+    if (lines.length === 0) {
+      return { kind: 'csv', fileName: originalName, empty: true, status: 'neutral' };
+    }
+
+    const headers = parseCsvLine(lines[0]).map((h) => h.trim());
+    if (headers.length === 0 || headers.every((h) => h === '')) {
+      return { kind: 'error', fileName: originalName, message: `Parser error: could not read a header row from "${originalName}". Make sure the file is comma-separated with a header on the first line.` };
+    }
+    const dataLines = lines.slice(1);
+    const truncated = dataLines.length > MAX_CSV_ROWS_RETURNED;
+    const rows = dataLines.slice(0, MAX_CSV_ROWS_RETURNED).map(parseCsvLine);
+
+    const colStats = headers
+      .map((h, idx) => {
+        const values = rows.map((r) => parseFloat(r[idx])).filter((v) => !Number.isNaN(v));
+        if (values.length === 0) return null;
+        const sum = values.reduce((a, b) => a + b, 0);
+        return { header: h, min: Math.min(...values), max: Math.max(...values), avg: sum / values.length, count: values.length };
+      })
+      .filter(Boolean);
+
+    let status = 'info';
+    const statusColIdx = headers.findIndex((h) => /^(status|level)$/i.test(h.trim()));
+    if (statusColIdx >= 0) {
+      const hasError = rows.some((r) => /error|fail|critical/i.test(r[statusColIdx] || ''));
+      const hasWarn = rows.some((r) => /warn/i.test(r[statusColIdx] || ''));
+      if (hasError) status = 'error';
+      else if (hasWarn) status = 'warn';
+    }
+
+    return {
+      kind: 'csv',
+      fileName: originalName,
+      totalRows: dataLines.length,
+      truncated,
+      status,
+      colStats,
+      table: { headers, rows },
+    };
+  } catch (err) {
+    return { kind: 'error', fileName: originalName, message: `Parser error: unable to parse "${originalName}" as CSV (${err.message}).` };
   }
-
-  const headers = parseCsvLine(lines[0]).map((h) => h.trim());
-  const dataLines = lines.slice(1);
-  const truncated = dataLines.length > MAX_CSV_ROWS_RETURNED;
-  const rows = dataLines.slice(0, MAX_CSV_ROWS_RETURNED).map(parseCsvLine);
-
-  const colStats = headers
-    .map((h, idx) => {
-      const values = rows.map((r) => parseFloat(r[idx])).filter((v) => !Number.isNaN(v));
-      if (values.length === 0) return null;
-      const sum = values.reduce((a, b) => a + b, 0);
-      return { header: h, min: Math.min(...values), max: Math.max(...values), avg: sum / values.length, count: values.length };
-    })
-    .filter(Boolean);
-
-  let status = 'info';
-  const statusColIdx = headers.findIndex((h) => /^(status|level)$/i.test(h.trim()));
-  if (statusColIdx >= 0) {
-    const hasError = rows.some((r) => /error|fail|critical/i.test(r[statusColIdx] || ''));
-    const hasWarn = rows.some((r) => /warn/i.test(r[statusColIdx] || ''));
-    if (hasError) status = 'error';
-    else if (hasWarn) status = 'warn';
-  }
-
-  return {
-    kind: 'csv',
-    fileName: originalName,
-    totalRows: dataLines.length,
-    truncated,
-    status,
-    colStats,
-    table: { headers, rows },
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -244,23 +262,37 @@ function analyzeCsv(content, originalName) {
 // ---------------------------------------------------------------------------
 
 function analyzeXls(filePath, originalName) {
-  const workbook = XLSX.readFile(filePath);
-  const sheets = workbook.SheetNames.map((name) => {
-    const sheet = workbook.Sheets[name];
-    const json = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
-    if (json.length === 0) return { name, headers: [], rows: [], totalRows: 0, truncated: false };
+  let workbook;
+  try {
+    workbook = XLSX.readFile(filePath);
+  } catch (err) {
+    return { kind: 'error', fileName: originalName, message: `Parser error: unable to read "${originalName}" as an Excel workbook (${err.message}). It may be corrupted, password-protected, or not a real .xls/.xlsx file.` };
+  }
 
-    const headers = (json[0] || []).map((h) => String(h));
-    const dataRows = json.slice(1);
-    const truncated = dataRows.length > MAX_XLS_ROWS_RETURNED;
-    const rows = dataRows
-      .slice(0, MAX_XLS_ROWS_RETURNED)
-      .map((r) => headers.map((_, i) => (r[i] !== undefined ? String(r[i]) : '')));
+  if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+    return { kind: 'error', fileName: originalName, message: `Parser error: "${originalName}" does not contain any sheets.` };
+  }
 
-    return { name, headers, rows, totalRows: dataRows.length, truncated };
-  });
+  try {
+    const sheets = workbook.SheetNames.map((name) => {
+      const sheet = workbook.Sheets[name];
+      const json = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+      if (json.length === 0) return { name, headers: [], rows: [], totalRows: 0, truncated: false };
 
-  return { kind: 'xls', fileName: originalName, status: 'info', sheets };
+      const headers = (json[0] || []).map((h) => String(h));
+      const dataRows = json.slice(1);
+      const truncated = dataRows.length > MAX_XLS_ROWS_RETURNED;
+      const rows = dataRows
+        .slice(0, MAX_XLS_ROWS_RETURNED)
+        .map((r) => headers.map((_, i) => (r[i] !== undefined ? String(r[i]) : '')));
+
+      return { name, headers, rows, totalRows: dataRows.length, truncated };
+    });
+
+    return { kind: 'xls', fileName: originalName, status: 'info', sheets };
+  } catch (err) {
+    return { kind: 'error', fileName: originalName, message: `Parser error: unable to read sheet data from "${originalName}" (${err.message}).` };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +310,7 @@ function analyzeMiscFile(filePath, originalName) {
     // e.g. "messages", "syslog") are treated as plain text/log content.
     if (path.extname(lower) === '') return analyzeGenericLog(readCapped(filePath), originalName);
   } catch (err) {
-    return { kind: 'error', fileName: originalName, message: `Failed to analyze file: ${err.message}` };
+    return { kind: 'error', fileName: originalName, message: `Parser error: unable to read or parse "${originalName}" (${err.message}).` };
   }
   return null;
 }
