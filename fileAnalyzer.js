@@ -104,37 +104,38 @@ function analyzeGenericLog(content, originalName) {
 // .har (HTTP Archive — JSON)
 // ---------------------------------------------------------------------------
 
-function analyzeHar(content, originalName) {
+// Default thresholds for the API-level analysis below (overridable by caller).
+const DEFAULT_SLOW_THRESHOLD_MS = 2000;
+const DEFAULT_TIMEOUT_THRESHOLD_MS = 10000;
+const MAX_API_LIST_SIZE = 20;
+const MAX_API_STATUS_LIST_SIZE = 10;
+
+// Parses raw HAR JSON text into a flat array of per-request rows
+// ({ method, url, domain, status, time, mimeType }), or returns
+// { error: <string> } if the content isn't valid/well-formed HAR. Shared by
+// both a direct .har upload (analyzeHar below) and the archive scanner
+// (archiveAnalyzer.js), which may find one or more .har files inside an
+// extracted log bundle.
+function parseHarEntries(content) {
   let parsed;
   try {
     parsed = JSON.parse(content);
   } catch (err) {
-    return { kind: 'error', fileName: originalName, message: `Parser error: "${originalName}" is not valid JSON (${err.message}). A .har file must be a valid HTTP Archive export.` };
+    return { error: `is not valid JSON (${err.message})` };
   }
 
   if (!parsed || !parsed.log || !Array.isArray(parsed.log.entries)) {
-    return { kind: 'error', fileName: originalName, message: `Parser error: "${originalName}" does not look like a valid HAR file — expected a top-level "log.entries" array.` };
+    return { error: 'does not look like a valid HAR file — expected a top-level "log.entries" array' };
   }
 
-  const rawEntries = parsed.log.entries;
-  const statusBuckets = { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0, other: 0 };
-
-  const rows = rawEntries.map((e) => {
+  const rows = parsed.log.entries.map((e) => {
     const status = e.response ? Number(e.response.status) || 0 : 0;
-    const bucket = status >= 200 && status < 300 ? '2xx'
-      : status >= 300 && status < 400 ? '3xx'
-        : status >= 400 && status < 500 ? '4xx'
-          : status >= 500 && status < 600 ? '5xx'
-            : 'other';
-    statusBuckets[bucket] += 1;
-
     let domain = '';
     try {
       domain = new URL(e.request ? e.request.url : '').hostname;
     } catch (_err) {
       domain = '';
     }
-
     return {
       method: e.request ? e.request.method : '',
       url: e.request ? e.request.url : '',
@@ -143,6 +144,110 @@ function analyzeHar(content, originalName) {
       time: typeof e.time === 'number' ? e.time : 0,
       mimeType: e.response && e.response.content ? e.response.content.mimeType || '' : '',
     };
+  });
+
+  return { rows };
+}
+
+// Groups HAR request rows by exact "METHOD URL" (including query string) and
+// builds the API-level breakdowns: top-consumed endpoints, slow/stressed
+// endpoints, endpoints hitting timeouts, and top endpoints per HTTP status
+// bucket. Used both for a single .har upload and for an archive containing
+// one or more .har files (rows from all of them are merged first).
+function buildApiAnalysis(rows, opts = {}) {
+  const slowThresholdMs = opts.slowThresholdMs || DEFAULT_SLOW_THRESHOLD_MS;
+  const timeoutThresholdMs = opts.timeoutThresholdMs || DEFAULT_TIMEOUT_THRESHOLD_MS;
+
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = `${row.method} ${row.url}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        method: row.method,
+        url: row.url,
+        count: 0,
+        totalTime: 0,
+        maxTime: 0,
+        minTime: Infinity,
+        buckets: { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0, other: 0 },
+        timeoutCount: 0,
+      });
+    }
+    const g = groups.get(key);
+    g.count += 1;
+    g.totalTime += row.time;
+    g.maxTime = Math.max(g.maxTime, row.time);
+    g.minTime = Math.min(g.minTime, row.time);
+    const bucket = row.status >= 200 && row.status < 300 ? '2xx'
+      : row.status >= 300 && row.status < 400 ? '3xx'
+        : row.status >= 400 && row.status < 500 ? '4xx'
+          : row.status >= 500 && row.status < 600 ? '5xx'
+            : 'other';
+    g.buckets[bucket] += 1;
+    // A request with no response at all (status 0) or one that took at/above
+    // the timeout threshold is counted as a timeout for that endpoint.
+    if (row.status === 0 || row.time >= timeoutThresholdMs) g.timeoutCount += 1;
+  });
+
+  const list = Array.from(groups.values()).map((g) => ({
+    method: g.method,
+    url: g.url,
+    count: g.count,
+    avgTime: g.totalTime / g.count,
+    maxTime: g.maxTime,
+    minTime: g.minTime === Infinity ? 0 : g.minTime,
+    buckets: g.buckets,
+    timeoutCount: g.timeoutCount,
+  }));
+
+  const topApis = [...list].sort((a, b) => b.count - a.count).slice(0, MAX_API_LIST_SIZE);
+
+  // "Slow or stressed" = endpoints whose average or peak latency crosses the
+  // slow threshold; ranked by (avg time * call count) so an endpoint that's
+  // both frequently called AND slow — i.e. genuinely "stressed" — floats to
+  // the top rather than a one-off slow outlier.
+  const slowApis = list
+    .filter((a) => a.avgTime >= slowThresholdMs || a.maxTime >= slowThresholdMs)
+    .sort((a, b) => (b.avgTime * b.count) - (a.avgTime * a.count))
+    .slice(0, MAX_API_LIST_SIZE);
+
+  const timeoutApis = list
+    .filter((a) => a.timeoutCount > 0)
+    .sort((a, b) => b.timeoutCount - a.timeoutCount)
+    .slice(0, MAX_API_LIST_SIZE);
+
+  const top5xx = list.filter((a) => a.buckets['5xx'] > 0).sort((a, b) => b.buckets['5xx'] - a.buckets['5xx']).slice(0, MAX_API_STATUS_LIST_SIZE);
+  const top4xx = list.filter((a) => a.buckets['4xx'] > 0).sort((a, b) => b.buckets['4xx'] - a.buckets['4xx']).slice(0, MAX_API_STATUS_LIST_SIZE);
+  const top3xx = list.filter((a) => a.buckets['3xx'] > 0).sort((a, b) => b.buckets['3xx'] - a.buckets['3xx']).slice(0, MAX_API_STATUS_LIST_SIZE);
+
+  return {
+    totalApis: list.length,
+    slowThresholdMs,
+    timeoutThresholdMs,
+    topApis,
+    slowApis,
+    timeoutApis,
+    top5xx,
+    top4xx,
+    top3xx,
+  };
+}
+
+function analyzeHar(content, originalName) {
+  const parsedResult = parseHarEntries(content);
+  if (parsedResult.error) {
+    return { kind: 'error', fileName: originalName, message: `Parser error: "${originalName}" ${parsedResult.error}. A .har file must be a valid HTTP Archive export.` };
+  }
+
+  const rows = parsedResult.rows;
+  const statusBuckets = { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0, other: 0 };
+  rows.forEach((r) => {
+    const bucket = r.status >= 200 && r.status < 300 ? '2xx'
+      : r.status >= 300 && r.status < 400 ? '3xx'
+        : r.status >= 400 && r.status < 500 ? '4xx'
+          : r.status >= 500 && r.status < 600 ? '5xx'
+            : 'other';
+    statusBuckets[bucket] += 1;
   });
 
   const failed = rows.filter((r) => r.status >= 400);
@@ -171,6 +276,7 @@ function analyzeHar(content, originalName) {
     table: { headers, rows: toTableRows(rows.slice(0, MAX_HAR_TABLE_ROWS)) },
     failedTable: { headers, rows: toTableRows(failed.slice(0, MAX_HAR_TABLE_ROWS)) },
     slowestTable: { headers, rows: toTableRows(slowest) },
+    apiAnalysis: buildApiAnalysis(rows),
   };
 }
 
@@ -315,4 +421,4 @@ function analyzeMiscFile(filePath, originalName) {
   return null;
 }
 
-module.exports = { analyzeMiscFile };
+module.exports = { analyzeMiscFile, parseHarEntries, buildApiAnalysis };

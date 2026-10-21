@@ -113,9 +113,9 @@ app.post('/upload', (req, res) => {
       if (isArchiveFile(req.file.originalname)) {
         extractRoot = path.join(uploadDir, 'extracted', path.basename(req.file.path));
         await extractArchive(req.file.path, req.file.originalname, extractRoot);
-        const { sanityLogAnalysis, tabs, ivtReports } = analyzeExtractedArchive(extractRoot);
+        const { sanityLogAnalysis, tabs, ivtReports, apiAnalysis } = analyzeExtractedArchive(extractRoot);
         analysis = sanityLogAnalysis;
-        archive = { tabs, ivtReports };
+        archive = { tabs, ivtReports, apiAnalysis };
       } else {
         analysis = analyzeLogFile(req.file.path, req.file.originalname);
         // Not a cop_sanity_logs* file: fall back to type-specific analysis

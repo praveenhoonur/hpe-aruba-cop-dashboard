@@ -547,36 +547,137 @@ function renderIvtReports(archive) {
 // fileAnalyzer.js; each `kind` gets its own renderer below.
 // ---------------------------------------------------------------------------
 
-function renderFileAnalysisTab(fileAnalysis) {
+function renderFileAnalysisTab(fileAnalysis, archiveApiAnalysis) {
   const container = document.createElement('div');
+  let rendered = false;
 
-  if (!fileAnalysis) {
+  if (fileAnalysis) {
+    if (fileAnalysis.kind === 'error') {
+      const errCard = document.createElement('div');
+      errCard.className = 'card';
+      errCard.innerHTML = `<p class="level-error">${escapeHtml(fileAnalysis.message || 'Failed to analyze this file.')}</p>`;
+      container.appendChild(errCard);
+    } else {
+      const heading = document.createElement('h3');
+      heading.textContent = `File Analysis: ${fileAnalysis.fileName}`;
+      container.appendChild(heading);
+
+      if (fileAnalysis.kind === 'genericLog') {
+        container.appendChild(renderGenericLogAnalysis(fileAnalysis));
+      } else if (fileAnalysis.kind === 'har') {
+        container.appendChild(renderHarAnalysis(fileAnalysis));
+      } else if (fileAnalysis.kind === 'csv') {
+        container.appendChild(renderCsvAnalysis(fileAnalysis));
+      } else if (fileAnalysis.kind === 'xls') {
+        container.appendChild(renderXlsAnalysis(fileAnalysis));
+      }
+    }
+    rendered = true;
+  }
+
+  // Archives (.tar/.tar.gz/.tar.zip/.zip) don't produce a single
+  // `fileAnalysis`, but may contain one or more .har files anywhere inside
+  // — show the combined API Analysis for those here too, so the "top APIs
+  // consumed / slow / timeout / 4xx / 5xx / 3xx" breakdown isn't limited to
+  // standalone .har uploads.
+  if (archiveApiAnalysis) {
+    if (archiveApiAnalysis.error) {
+      const errCard = document.createElement('div');
+      errCard.className = 'card';
+      errCard.innerHTML = `<p class="level-error">${escapeHtml(archiveApiAnalysis.message)}</p>`;
+      container.appendChild(errCard);
+    } else {
+      const heading2 = document.createElement('h3');
+      heading2.textContent = `API Analysis — ${archiveApiAnalysis.sourceFiles} .har file(s) in this bundle (${archiveApiAnalysis.totalRequests} request(s))`;
+      container.appendChild(heading2);
+      container.appendChild(renderApiAnalysisSection(archiveApiAnalysis));
+    }
+    rendered = true;
+  }
+
+  if (!rendered) {
     container.className = 'card';
     container.textContent = 'No generic .log/.txt, .har, .csv, or .xls file was found in this upload.';
-    return container;
-  }
-
-  if (fileAnalysis.kind === 'error') {
-    container.className = 'card';
-    container.innerHTML = `<p class="level-error">${escapeHtml(fileAnalysis.message || 'Failed to analyze this file.')}</p>`;
-    return container;
-  }
-
-  const heading = document.createElement('h3');
-  heading.textContent = `File Analysis: ${fileAnalysis.fileName}`;
-  container.appendChild(heading);
-
-  if (fileAnalysis.kind === 'genericLog') {
-    container.appendChild(renderGenericLogAnalysis(fileAnalysis));
-  } else if (fileAnalysis.kind === 'har') {
-    container.appendChild(renderHarAnalysis(fileAnalysis));
-  } else if (fileAnalysis.kind === 'csv') {
-    container.appendChild(renderCsvAnalysis(fileAnalysis));
-  } else if (fileAnalysis.kind === 'xls') {
-    container.appendChild(renderXlsAnalysis(fileAnalysis));
   }
 
   return container;
+}
+
+// Renders the API-level breakdown built by fileAnalyzer.js's
+// buildApiAnalysis(): top-20 most-consumed endpoints, slow/stressed
+// endpoints, endpoints hitting timeouts, and the top endpoints per HTTP
+// status bucket (5xx/4xx/3xx). Shared between a standalone .har upload
+// (renderHarAnalysis) and an archive bundle containing .har file(s)
+// (renderFileAnalysisTab).
+function renderApiAnalysisSection(apiAnalysis) {
+  const wrap = document.createElement('div');
+
+  const summaryCard = document.createElement('div');
+  summaryCard.className = 'card';
+  summaryCard.innerHTML = `<h3>API Analysis</h3><p>${apiAnalysis.totalApis} unique API endpoint(s)` +
+    (typeof apiAnalysis.totalRequests === 'number' ? ` across ${apiAnalysis.totalRequests} request(s)` : '') +
+    `. Slow/stressed threshold: ${apiAnalysis.slowThresholdMs}ms. Timeout threshold: ${apiAnalysis.timeoutThresholdMs}ms.</p>`;
+  wrap.appendChild(summaryCard);
+
+  const sections = [
+    {
+      title: `Top 20 APIs Consumed (${apiAnalysis.topApis.length})`,
+      list: apiAnalysis.topApis,
+      open: true,
+      headers: ['Method', 'API', 'Count', 'Avg Time (ms)', 'Max Time (ms)'],
+      row: (r) => [r.method, r.url, String(r.count), String(Math.round(r.avgTime)), String(Math.round(r.maxTime))],
+    },
+    {
+      title: `Slow / Stressed APIs (${apiAnalysis.slowApis.length})`,
+      list: apiAnalysis.slowApis,
+      headers: ['Method', 'API', 'Count', 'Avg Time (ms)', 'Max Time (ms)'],
+      row: (r) => [r.method, r.url, String(r.count), String(Math.round(r.avgTime)), String(Math.round(r.maxTime))],
+    },
+    {
+      title: `Timeout APIs (${apiAnalysis.timeoutApis.length})`,
+      list: apiAnalysis.timeoutApis,
+      headers: ['Method', 'API', 'Timeout Count', 'Total Count', 'Avg Time (ms)', 'Max Time (ms)'],
+      row: (r) => [r.method, r.url, String(r.timeoutCount), String(r.count), String(Math.round(r.avgTime)), String(Math.round(r.maxTime))],
+    },
+    {
+      title: `Top 10 APIs — HTTP 5xx (${apiAnalysis.top5xx.length})`,
+      list: apiAnalysis.top5xx,
+      headers: ['Method', 'API', '5xx Count', 'Total Count'],
+      row: (r) => [r.method, r.url, String(r.buckets['5xx']), String(r.count)],
+    },
+    {
+      title: `Top 10 APIs — HTTP 4xx (${apiAnalysis.top4xx.length})`,
+      list: apiAnalysis.top4xx,
+      headers: ['Method', 'API', '4xx Count', 'Total Count'],
+      row: (r) => [r.method, r.url, String(r.buckets['4xx']), String(r.count)],
+    },
+    {
+      title: `Top 10 APIs — HTTP 3xx (${apiAnalysis.top3xx.length})`,
+      list: apiAnalysis.top3xx,
+      headers: ['Method', 'API', '3xx Count', 'Total Count'],
+      row: (r) => [r.method, r.url, String(r.buckets['3xx']), String(r.count)],
+    },
+  ];
+
+  sections.forEach((s) => {
+    const details = document.createElement('details');
+    details.className = 'section';
+    if (s.open) details.open = true;
+    const summary = document.createElement('summary');
+    summary.textContent = s.title;
+    details.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'section-body';
+    if (s.list.length === 0) {
+      body.textContent = 'None found.';
+    } else {
+      body.appendChild(renderKubectlTable({ headers: s.headers, rows: s.list.map(s.row) }));
+    }
+    details.appendChild(body);
+    wrap.appendChild(details);
+  });
+
+  return wrap;
 }
 
 function renderGenericLogAnalysis(data) {
@@ -652,6 +753,10 @@ function renderHarAnalysis(data) {
     });
     domCard.appendChild(list);
     wrap.appendChild(domCard);
+  }
+
+  if (data.apiAnalysis) {
+    wrap.appendChild(renderApiAnalysisSection(data.apiAnalysis));
   }
 
   if (data.failedTable && data.failedTable.rows.length > 0) {
@@ -827,7 +932,7 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder, fileAnalysis)
         panel.appendChild(empty);
       }
     } else if (idx === 3) {
-      panel.appendChild(renderFileAnalysisTab(fileAnalysis));
+      panel.appendChild(renderFileAnalysisTab(fileAnalysis, archive && archive.apiAnalysis));
     } else {
       panel.appendChild(renderDeepSearchTab());
     }

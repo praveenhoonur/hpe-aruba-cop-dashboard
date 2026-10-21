@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { isCopSanityLogPrefix, analyzeSanityLogFile } = require('./analyzer');
 const { analyzeIvtFile } = require('./ivtAnalyzer');
+const { parseHarEntries, buildApiAnalysis } = require('./fileAnalyzer');
 
 // Cap per-file read to keep both processing time and memory bounded on huge
 // dumps. Large sanity-check bundles can contain thousands of pod log files
@@ -18,6 +19,11 @@ const MAX_READ_BYTES = 1 * 1024 * 1024;
 // to avoid wasting time/memory opening thousands of huge binary or rotated
 // log files that are unlikely to contain useful, recent RCA signal anyway.
 const MAX_FILE_SIZE_TO_SCAN = 200 * 1024 * 1024;
+
+// .har files must be read in full (they're a single JSON document, so a
+// head/tail-only read like readTextSafe would produce invalid JSON) but are
+// still capped to avoid an unexpectedly huge capture blowing up memory.
+const MAX_HAR_FILE_BYTES = 20 * 1024 * 1024; // 20MB
 
 // Ordered set of known failure signatures. For a given group of related
 // files we tally how many lines match each pattern; the highest-count
@@ -174,6 +180,54 @@ function analyzeFile(file) {
   };
 }
 
+// Finds every .har file anywhere in the extracted archive (any nesting
+// depth), parses each one, merges all their request rows together, and
+// builds a single combined API-level breakdown (top-consumed endpoints,
+// slow/stressed endpoints, timeouts, and top endpoints per HTTP status
+// bucket) covering the whole bundle. Returns null if no .har files were
+// found, or an { error, message } shape if some were found but none could
+// be parsed.
+function analyzeHarFilesInArchive(allFiles) {
+  const harFiles = allFiles.filter((f) => path.extname(f.relPath).toLowerCase() === '.har');
+  if (harFiles.length === 0) return null;
+
+  const allRows = [];
+  const parseErrors = [];
+
+  for (const file of harFiles) {
+    try {
+      const stat = fs.statSync(file.fullPath);
+      if (stat.size > MAX_HAR_FILE_BYTES) {
+        parseErrors.push(`${file.relPath}: skipped (file too large to parse)`);
+        continue;
+      }
+      const content = fs.readFileSync(file.fullPath, 'utf8');
+      const { rows, error } = parseHarEntries(content);
+      if (error) {
+        parseErrors.push(`${file.relPath}: ${error}`);
+        continue;
+      }
+      allRows.push(...rows);
+    } catch (err) {
+      parseErrors.push(`${file.relPath}: ${err.message}`);
+    }
+  }
+
+  if (allRows.length === 0) {
+    return {
+      error: true,
+      message: `Found ${harFiles.length} .har file(s) in this bundle, but none could be parsed.${parseErrors.length > 0 ? ` (${parseErrors.join('; ')})` : ''}`,
+    };
+  }
+
+  return {
+    ...buildApiAnalysis(allRows),
+    sourceFiles: harFiles.length,
+    totalRequests: allRows.length,
+    parseErrors,
+  };
+}
+
 // Walks the extracted archive, finds a cop_sanity_logs* file (if any) for the
 // existing cluster-health page, and builds per-directory "tabs" where each
 // file gets its own collapsible entry with a brief summary and heuristic RCA.
@@ -204,6 +258,8 @@ function analyzeExtractedArchive(extractRoot) {
       console.error('Failed to analyze embedded sanity log:', err);
     }
   }
+
+  const apiAnalysis = analyzeHarFilesInArchive(allFiles);
 
   // The sanity log already has its own dedicated Cluster Health view, so
   // exclude it from the per-directory tabs to avoid showing it twice.
@@ -241,7 +297,7 @@ function analyzeExtractedArchive(extractRoot) {
     return a.name.localeCompare(b.name);
   });
 
-  return { sanityLogAnalysis, tabs, ivtReports };
+  return { sanityLogAnalysis, tabs, ivtReports, apiAnalysis };
 }
 
 module.exports = { analyzeExtractedArchive };
