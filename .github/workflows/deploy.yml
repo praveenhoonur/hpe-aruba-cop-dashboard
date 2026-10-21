@@ -46,6 +46,17 @@ jobs:
             --exclude '.env' \
             ./ "$APP_DIR/"
 
+      - name: Enforce read-only permissions on docs
+        # Git only tracks the executable bit, not arbitrary modes, so the
+        # 444 (read-only) permission set locally on docs files is lost on
+        # checkout/rsync. Re-apply it here so these files stay non-writable
+        # on the production host after every deploy.
+        run: |
+          set -e
+          if [ -f "$APP_DIR/docs/DASHBOARD_SECTIONS.md" ]; then
+            chmod 444 "$APP_DIR/docs/DASHBOARD_SECTIONS.md"
+          fi
+
       - name: Install production dependencies in app directory
         run: |
           set -e
