@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const XLSX = require('xlsx');
 const { detectLevel } = require('./analyzer');
 
@@ -273,6 +274,9 @@ function analyzeMiscFile(filePath, originalName) {
     if (lower.endsWith('.csv')) return analyzeCsv(readCapped(filePath), originalName);
     if (lower.endsWith('.xls')) return analyzeXls(filePath, originalName);
     if (lower.endsWith('.log') || lower.endsWith('.txt')) return analyzeGenericLog(readCapped(filePath), originalName);
+    // Files with no recognized extension (including no extension at all,
+    // e.g. "messages", "syslog") are treated as plain text/log content.
+    if (path.extname(lower) === '') return analyzeGenericLog(readCapped(filePath), originalName);
   } catch (err) {
     return { kind: 'error', fileName: originalName, message: `Failed to analyze file: ${err.message}` };
   }

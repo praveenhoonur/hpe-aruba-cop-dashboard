@@ -75,10 +75,13 @@ function fileFilter(req, file, cb) {
   // Support compound extensions (.tar.zip, .tar.gz) in addition to single extensions above
   const isCompound = ALLOWED_COMPOUND_SUFFIXES.some((suffix) => name.endsWith(suffix));
   const ext = path.extname(name);
-  if (isCompound || ALLOWED_EXT.includes(ext)) {
+  // Files with no extension at all (e.g. "messages", "syslog") are treated as
+  // plain text/log content and analyzed accordingly — see fileAnalyzer.js.
+  const hasNoExtension = ext === '';
+  if (isCompound || hasNoExtension || ALLOWED_EXT.includes(ext)) {
     cb(null, true);
   } else {
-    cb(new Error('Unsupported file type. Allowed: .log, .txt, .tar, .tar.zip, .tar.gz, .zip, .har, .csv, .xls'));
+    cb(new Error('Unsupported file type. Allowed: .log, .txt, .tar, .tar.zip, .tar.gz, .zip, .har, .csv, .xls, or files with no extension'));
   }
 }
 

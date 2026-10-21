@@ -11,6 +11,9 @@ const breakdownChartHolder = {};
 
 function hasAllowedExtension(name) {
   const lower = name.toLowerCase();
+  // Files with no extension at all (e.g. "messages", "syslog") are treated
+  // as plain text/log content and accepted — see fileAnalyzer.js.
+  if (!lower.includes('.')) return true;
   return ALLOWED.some((ext) => lower.endsWith(ext));
 }
 
@@ -29,7 +32,7 @@ form.addEventListener('submit', async (e) => {
   }
 
   if (!hasAllowedExtension(file.name)) {
-    statusEl.textContent = 'Unsupported file type. Allowed: .log, .txt, .tar, .tar.zip, .tar.gz, .zip, .har, .csv, .xls';
+    statusEl.textContent = 'Unsupported file type. Allowed: .log, .txt, .tar, .tar.zip, .tar.gz, .zip, .har, .csv, .xls, or files with no extension';
     statusEl.classList.add('error');
     return;
   }
