@@ -575,4 +575,5 @@ module.exports = {
   isCopSanityLogPrefix,
   analyzeLogFile,
   analyzeSanityLogFile,
+  detectLevel,
 };

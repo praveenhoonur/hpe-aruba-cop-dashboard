@@ -11,10 +11,10 @@ if (!payload || (!payload.analysis && !payload.archive)) {
     </div>
   `;
 } else {
-  renderDeepDive(payload.analysis, payload.archive);
+  renderDeepDive(payload.analysis, payload.archive, payload.fileAnalysis);
 }
 
-function renderDeepDive(analysis, archive) {
+function renderDeepDive(analysis, archive, fileAnalysis) {
   const heading = document.createElement('h2');
   heading.className = 'exec-heading';
   heading.textContent = analysis && analysis.clusterFqdn
@@ -27,7 +27,7 @@ function renderDeepDive(analysis, archive) {
   const hasSections = analysis && Array.isArray(analysis.sections) && analysis.sections.length > 0;
   const hasArchive = archive && Array.isArray(archive.tabs) && archive.tabs.length > 0;
 
-  if (!hasSections && !hasArchive) {
+  if (!hasSections && !hasArchive && !fileAnalysis) {
     const empty = document.createElement('div');
     empty.className = 'card';
     empty.textContent = 'No detailed data available for this upload.';
@@ -35,5 +35,5 @@ function renderDeepDive(analysis, archive) {
     return;
   }
 
-  root.appendChild(renderAnalysisTabsSection(analysis, archive, chartHolder));
+  root.appendChild(renderAnalysisTabsSection(analysis, archive, chartHolder, fileAnalysis));
 }

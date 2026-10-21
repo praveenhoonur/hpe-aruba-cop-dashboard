@@ -277,7 +277,17 @@ function percentLevel(value) {
 // Colors a pod STATUS-style cell (e.g. from `kubectl get pods`) using the
 // same error/warn/info convention as the rest of the app: crash/failure
 // states are red, transitional states are amber, healthy states are green.
+// Also understands bare numeric HTTP-style status codes (e.g. from a .har
+// or .csv "Status" column): 5xx -> error, 4xx -> warn, 2xx/3xx -> info.
 function statusLevel(value) {
+  const trimmed = String(value).trim();
+  if (/^\d{3}$/.test(trimmed)) {
+    const code = Number(trimmed);
+    if (code >= 500) return 'error';
+    if (code >= 400) return 'warn';
+    if (code >= 200 && code < 400) return 'info';
+    return null;
+  }
   if (/\b(error|crashloopbackoff|imagepullbackoff|failed|evicted|oomkilled)\b/i.test(value)) return 'error';
   if (/\b(pending|warning|unknown|terminating|containercreating|init:)\b/i.test(value)) return 'warn';
   if (/\b(running|completed|succeeded|ready)\b/i.test(value)) return 'info';
@@ -530,8 +540,227 @@ function renderIvtReports(archive) {
   return container;
 }
 
+// ---------------------------------------------------------------------------
+// "File Analysis" tab: type-specific summaries for uploads that are NOT a
+// cop_sanity_logs* file and NOT an archive — generic .log/.txt, .har, .csv,
+// and legacy .xls files. Mirrors the server-side analyzers in
+// fileAnalyzer.js; each `kind` gets its own renderer below.
+// ---------------------------------------------------------------------------
+
+function renderFileAnalysisTab(fileAnalysis) {
+  const container = document.createElement('div');
+
+  if (!fileAnalysis) {
+    container.className = 'card';
+    container.textContent = 'No generic .log/.txt, .har, .csv, or .xls file was found in this upload.';
+    return container;
+  }
+
+  if (fileAnalysis.kind === 'error') {
+    container.className = 'card';
+    container.innerHTML = `<p class="level-error">${escapeHtml(fileAnalysis.message || 'Failed to analyze this file.')}</p>`;
+    return container;
+  }
+
+  const heading = document.createElement('h3');
+  heading.textContent = `File Analysis: ${fileAnalysis.fileName}`;
+  container.appendChild(heading);
+
+  if (fileAnalysis.kind === 'genericLog') {
+    container.appendChild(renderGenericLogAnalysis(fileAnalysis));
+  } else if (fileAnalysis.kind === 'har') {
+    container.appendChild(renderHarAnalysis(fileAnalysis));
+  } else if (fileAnalysis.kind === 'csv') {
+    container.appendChild(renderCsvAnalysis(fileAnalysis));
+  } else if (fileAnalysis.kind === 'xls') {
+    container.appendChild(renderXlsAnalysis(fileAnalysis));
+  }
+
+  return container;
+}
+
+function renderGenericLogAnalysis(data) {
+  const wrap = document.createElement('div');
+
+  const summaryCard = document.createElement('div');
+  summaryCard.className = 'card';
+  const scannedNote = data.truncated
+    ? ` (${data.linesScanned} of ${data.totalLines} lines scanned; display truncated)`
+    : '';
+  summaryCard.innerHTML = `<h3>Summary</h3><p>${data.totalLines} line(s)${scannedNote}. ` +
+    `<span class="level-error">${data.counts.error} error(s)</span>, ` +
+    `<span class="level-warn">${data.counts.warn} warning(s)</span>, ` +
+    `<span class="level-info">${data.counts.info} info signal(s)</span>.</p>`;
+  wrap.appendChild(summaryCard);
+
+  if (data.topSignatures && data.topSignatures.length > 0) {
+    const sigCard = document.createElement('div');
+    sigCard.className = 'card';
+    sigCard.innerHTML = '<h3>Top Recurring Error/Warning Patterns</h3>';
+    const list = document.createElement('ul');
+    data.topSignatures.forEach((sig) => {
+      const li = document.createElement('li');
+      li.className = `level-${sig.level}`;
+      li.innerHTML = `<strong>${sig.count}&times;</strong> ${escapeHtml(sig.sample)}`;
+      list.appendChild(li);
+    });
+    sigCard.appendChild(list);
+    wrap.appendChild(sigCard);
+  }
+
+  const detailsEl = document.createElement('details');
+  detailsEl.className = 'section';
+  const summary = document.createElement('summary');
+  summary.textContent = `All scanned lines${data.entriesTruncated ? ` (showing first ${data.entries.length})` : ''}`;
+  detailsEl.appendChild(summary);
+  const body = document.createElement('div');
+  body.className = 'section-body';
+  data.entries.forEach((entry) => {
+    const line = document.createElement('div');
+    line.className = `log-line level-${entry.level}`;
+    line.textContent = entry.text;
+    body.appendChild(line);
+  });
+  detailsEl.appendChild(body);
+  wrap.appendChild(detailsEl);
+
+  return wrap;
+}
+
+function renderHarAnalysis(data) {
+  const wrap = document.createElement('div');
+
+  const buckets = data.statusBuckets || {};
+  const summaryCard = document.createElement('div');
+  summaryCard.className = 'card';
+  summaryCard.innerHTML = `<h3>Summary</h3><p>${data.totalRequests} request(s) captured. ` +
+    `<span class="level-info">2xx: ${buckets['2xx'] || 0}</span> &nbsp; ` +
+    `<span class="level-info">3xx: ${buckets['3xx'] || 0}</span> &nbsp; ` +
+    `<span class="level-warn">4xx: ${buckets['4xx'] || 0}</span> &nbsp; ` +
+    `<span class="level-error">5xx: ${buckets['5xx'] || 0}</span></p>`;
+  wrap.appendChild(summaryCard);
+
+  if (data.topDomains && data.topDomains.length > 0) {
+    const domCard = document.createElement('div');
+    domCard.className = 'card';
+    domCard.innerHTML = '<h3>Top Domains</h3>';
+    const list = document.createElement('ul');
+    data.topDomains.forEach((d) => {
+      const li = document.createElement('li');
+      li.textContent = `${d.domain} \u2014 ${d.count} request(s)`;
+      list.appendChild(li);
+    });
+    domCard.appendChild(list);
+    wrap.appendChild(domCard);
+  }
+
+  if (data.failedTable && data.failedTable.rows.length > 0) {
+    const failedWrap = document.createElement('details');
+    failedWrap.className = 'section';
+    failedWrap.open = true;
+    const s = document.createElement('summary');
+    s.textContent = `Failed Requests (${data.failedTable.rows.length})`;
+    failedWrap.appendChild(s);
+    const body = document.createElement('div');
+    body.className = 'section-body';
+    body.appendChild(renderKubectlTable(data.failedTable));
+    failedWrap.appendChild(body);
+    wrap.appendChild(failedWrap);
+  }
+
+  if (data.slowestTable && data.slowestTable.rows.length > 0) {
+    const slowWrap = document.createElement('details');
+    slowWrap.className = 'section';
+    const s = document.createElement('summary');
+    s.textContent = 'Slowest Requests';
+    slowWrap.appendChild(s);
+    const body = document.createElement('div');
+    body.className = 'section-body';
+    body.appendChild(renderKubectlTable(data.slowestTable));
+    slowWrap.appendChild(body);
+    wrap.appendChild(slowWrap);
+  }
+
+  const allWrap = document.createElement('details');
+  allWrap.className = 'section';
+  const s2 = document.createElement('summary');
+  const shown = data.table.rows.length;
+  s2.textContent = `All Requests (${shown}${shown < data.totalRequests ? ` of ${data.totalRequests}` : ''})`;
+  allWrap.appendChild(s2);
+  const body2 = document.createElement('div');
+  body2.className = 'section-body';
+  body2.appendChild(renderKubectlTable(data.table));
+  allWrap.appendChild(body2);
+  wrap.appendChild(allWrap);
+
+  return wrap;
+}
+
+function renderCsvAnalysis(data) {
+  const wrap = document.createElement('div');
+
+  if (data.empty) {
+    wrap.className = 'card';
+    wrap.textContent = 'This CSV file is empty.';
+    return wrap;
+  }
+
+  const summaryCard = document.createElement('div');
+  summaryCard.className = 'card';
+  summaryCard.innerHTML = `<h3>Summary</h3><p>${data.totalRows} row(s)${data.truncated ? ' (display truncated)' : ''}, ${data.table.headers.length} column(s).</p>`;
+  wrap.appendChild(summaryCard);
+
+  if (data.colStats && data.colStats.length > 0) {
+    const statsCard = document.createElement('div');
+    statsCard.className = 'card';
+    statsCard.innerHTML = '<h3>Numeric Column Stats</h3>';
+    const list = document.createElement('ul');
+    data.colStats.forEach((c) => {
+      const li = document.createElement('li');
+      li.textContent = `${c.header}: min ${c.min}, max ${c.max}, avg ${c.avg.toFixed(2)} (${c.count} value(s))`;
+      list.appendChild(li);
+    });
+    statsCard.appendChild(list);
+    wrap.appendChild(statsCard);
+  }
+
+  wrap.appendChild(renderKubectlTable(data.table));
+
+  return wrap;
+}
+
+function renderXlsAnalysis(data) {
+  const wrap = document.createElement('div');
+
+  if (!data.sheets || data.sheets.length === 0) {
+    wrap.className = 'card';
+    wrap.textContent = 'No sheets found in this workbook.';
+    return wrap;
+  }
+
+  data.sheets.forEach((sheet, idx) => {
+    const detailsEl = document.createElement('details');
+    detailsEl.className = 'section';
+    if (idx === 0) detailsEl.open = true;
+    const s = document.createElement('summary');
+    s.textContent = `${sheet.name} (${sheet.totalRows} row(s)${sheet.truncated ? ', truncated' : ''})`;
+    detailsEl.appendChild(s);
+    const body = document.createElement('div');
+    body.className = 'section-body';
+    if (sheet.rows.length === 0) {
+      body.textContent = 'No data rows in this sheet.';
+    } else {
+      body.appendChild(renderKubectlTable({ headers: sheet.headers, rows: sheet.rows }));
+    }
+    detailsEl.appendChild(body);
+    wrap.appendChild(detailsEl);
+  });
+
+  return wrap;
+}
+
 // Generic top-level analysis tabs shared by the executive and deep-dive pages.
-function renderAnalysisTabsSection(analysis, archive, chartHolder) {
+function renderAnalysisTabsSection(analysis, archive, chartHolder, fileAnalysis) {
   const section = document.createElement('section');
   section.className = 'analysis-tabs-section';
 
@@ -550,6 +779,7 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder) {
     { name: 'Cluster Health Analysis' },
     { name: 'Logs Analysis' },
     { name: 'IVT Report' },
+    { name: 'File Analysis' },
     { name: 'Deep Search' },
   ];
 
@@ -596,6 +826,8 @@ function renderAnalysisTabsSection(analysis, archive, chartHolder) {
         empty.textContent = 'No files with "ivt" in the file name were found in this upload.';
         panel.appendChild(empty);
       }
+    } else if (idx === 3) {
+      panel.appendChild(renderFileAnalysisTab(fileAnalysis));
     } else {
       panel.appendChild(renderDeepSearchTab());
     }

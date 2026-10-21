@@ -3,7 +3,7 @@ const statusEl = document.getElementById('status');
 const execSummaryEl = document.getElementById('execSummary');
 const analysisTabsEl = document.getElementById('analysisTabs');
 const resetBtn = document.getElementById('resetBtn');
-const ALLOWED = ['.log', '.txt', '.tar', '.tar.zip', '.tar.gz', '.zip', '.gz'];
+const ALLOWED = ['.log', '.txt', '.tar', '.tar.zip', '.tar.gz', '.zip', '.gz', '.har', '.csv', '.xls'];
 
 let gaugeChart = null;
 let podChart = null;
@@ -29,7 +29,7 @@ form.addEventListener('submit', async (e) => {
   }
 
   if (!hasAllowedExtension(file.name)) {
-    statusEl.textContent = 'Unsupported file type. Allowed: .log, .txt, .tar, .tar.zip, .tar.gz, .zip';
+    statusEl.textContent = 'Unsupported file type. Allowed: .log, .txt, .tar, .tar.zip, .tar.gz, .zip, .har, .csv, .xls';
     statusEl.classList.add('error');
     return;
   }
@@ -46,7 +46,7 @@ form.addEventListener('submit', async (e) => {
       statusEl.textContent = data.message;
       statusEl.classList.add('success');
       form.reset();
-      renderExecSummary(data.analysis, data.archive);
+      renderExecSummary(data.analysis, data.archive, data.fileAnalysis);
     } else {
       statusEl.textContent = data.message || 'Upload failed.';
       statusEl.classList.add('error');
@@ -164,7 +164,7 @@ function computeHealthScore(chartData) {
   return Math.round(score);
 }
 
-function renderExecSummary(analysis, archive) {
+function renderExecSummary(analysis, archive, fileAnalysis) {
   execSummaryEl.innerHTML = '';
   analysisTabsEl.innerHTML = '';
 
@@ -174,8 +174,16 @@ function renderExecSummary(analysis, archive) {
       notice.className = 'card';
       notice.innerHTML = `<p>No cluster health summary file (<code>cop_sanity_logs*</code>) was found in the uploaded archive, but its contents were extracted.</p>`;
       execSummaryEl.appendChild(notice);
-      analysisTabsEl.appendChild(renderAnalysisTabsSection(analysis, archive, breakdownChartHolder));
+    } else if (fileAnalysis) {
+      const notice = document.createElement('div');
+      notice.className = 'card';
+      notice.innerHTML = `<p>Uploaded file was analyzed — see the "File Analysis" tab below.</p>`;
+      execSummaryEl.appendChild(notice);
     }
+    // Always render the tab bar (Cluster Health / Logs / IVT / File Analysis
+    // / Deep Search), even when there's no cop_sanity_logs* analysis, so
+    // File Analysis and Deep Search remain reachable for any upload.
+    analysisTabsEl.appendChild(renderAnalysisTabsSection(analysis, archive, breakdownChartHolder, fileAnalysis));
     return;
   }
 
@@ -224,8 +232,8 @@ function renderExecSummary(analysis, archive) {
   // AI Executive Briefing (Copilot narrative)
   execSummaryEl.appendChild(renderCopilotBriefing(analysis));
 
-  // Inline tabbed section: Cluster Health Analysis + Logs Analysis
-  analysisTabsEl.appendChild(renderAnalysisTabsSection(analysis, archive, breakdownChartHolder));
+  // Inline tabbed section: Cluster Health Analysis + Logs Analysis + File Analysis
+  analysisTabsEl.appendChild(renderAnalysisTabsSection(analysis, archive, breakdownChartHolder, fileAnalysis));
 }
 
 function verdictSentence(summary) {

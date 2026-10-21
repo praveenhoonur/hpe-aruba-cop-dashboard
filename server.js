@@ -5,6 +5,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { analyzeLogFile } = require('./analyzer');
+const { analyzeMiscFile } = require('./fileAnalyzer');
 const { extractArchive, isArchiveFile } = require('./archiveExtractor');
 const { analyzeExtractedArchive } = require('./archiveAnalyzer');
 const { generateCopilotNarrative } = require('./copilotNarrator');
@@ -102,6 +103,7 @@ app.post('/upload', (req, res) => {
 
     let analysis = null;
     let archive = null;
+    let fileAnalysis = null;
     let extractRoot = null;
 
     try {
@@ -113,6 +115,11 @@ app.post('/upload', (req, res) => {
         archive = { tabs, ivtReports };
       } else {
         analysis = analyzeLogFile(req.file.path, req.file.originalname);
+        // Not a cop_sanity_logs* file: fall back to type-specific analysis
+        // (generic .log/.txt, .har, .csv, .xls) shown in the "File Analysis" tab.
+        if (!analysis) {
+          fileAnalysis = analyzeMiscFile(req.file.path, req.file.originalname);
+        }
       }
     } catch (parseErr) {
       console.error('Analysis failed:', parseErr);
@@ -139,6 +146,7 @@ app.post('/upload', (req, res) => {
       message: `File "${req.file.originalname}" uploaded successfully.`,
       analysis,
       archive,
+      fileAnalysis,
     });
   });
 });
