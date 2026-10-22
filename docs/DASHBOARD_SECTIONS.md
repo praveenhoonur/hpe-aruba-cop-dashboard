@@ -12,8 +12,8 @@ alongside a UI change.
 
 ### 1. Download Debug Script
 Provides a direct download link (and a "View source on GitHub" link) for
-`k8s-debug-session.sh`, the Kubernetes/COP debug-session script that
-operators run on-prem to collect `cop_sanity_logs*.log` bundles for upload.
+`cop_diagnostics.sh`, the COP diagnostics script that operators run on-prem
+to collect `cop_sanity_logs*.log` bundles for upload.
 
 ### 2. Upload Log File
 File-upload form for submitting a collected log bundle (or an individual
