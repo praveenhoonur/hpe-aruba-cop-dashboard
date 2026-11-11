@@ -414,7 +414,7 @@ function renderArchiveTabs(archive) {
 
     const panel = document.createElement('div');
     panel.className = `tab-panel${idx === 0 ? ' active' : ''}`;
-    panel.appendChild(renderDirectoryTabPanel(tab));
+    panel.appendChild(renderDirectoryTabPanel(tab, archive.copVersion));
     panels.appendChild(panel);
   });
 
@@ -423,7 +423,7 @@ function renderArchiveTabs(archive) {
   return container;
 }
 
-function renderDirectoryTabPanel(tab) {
+function renderDirectoryTabPanel(tab, copVersion) {
   const container = document.createElement('div');
 
   if (!tab.groups || tab.groups.length === 0) {
@@ -466,7 +466,7 @@ function renderDirectoryTabPanel(tab) {
         const rcaItem = document.createElement('div');
         rcaItem.className = `rca-item level-${p.severity}`;
         rcaItem.innerHTML = `<strong>${escapeHtml(p.name)}</strong> — ${p.count} occurrence${p.count === 1 ? '' : 's'} · <em>${SEVERITY_LABEL[p.severity] || ''}</em><br/>${escapeHtml(p.rca)}${p.sample ? `<div class="rca-sample">${escapeHtml(p.sample)}</div>` : ''}`;
-        rcaItem.appendChild(renderRcaLookupWidget(p.rca));
+        rcaItem.appendChild(renderRcaLookupWidget(p.rca, copVersion));
         body.appendChild(rcaItem);
       });
     } else {
@@ -1259,8 +1259,11 @@ function renderDeepSearchTab() {
 // Shared widget: given RCA text (Copilot narrative or a heuristic RCA entry),
 // lets the user trigger a parallel Jira + Confluence search for related
 // issues/playbooks using a tight query extracted server-side from the
-// "Likely Root Cause" section.
-function renderRcaLookupWidget(rcaText) {
+// "Likely Root Cause" section. `copVersion` (the on-prem COP Version
+// detected from the uploaded sanity log, when available) is forwarded so
+// the server can scope the Jira search to the matching project (COP
+// "Central" vs. CNX "Central NextGen Experience").
+function renderRcaLookupWidget(rcaText, copVersion) {
   const wrapper = document.createElement('div');
   wrapper.className = 'rca-lookup';
 
@@ -1283,7 +1286,7 @@ function renderRcaLookupWidget(rcaText) {
       const res = await fetch('/api/rca-lookup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rcaText }),
+        body: JSON.stringify({ rcaText, copVersion }),
       });
       const data = await res.json();
       if (!data.success) {
@@ -1307,7 +1310,9 @@ function renderRcaLookupResults(data) {
 
   const queryLine = document.createElement('div');
   queryLine.className = 'rca-lookup-query';
-  queryLine.textContent = `Search query: "${data.query}"`;
+  queryLine.textContent = data.jiraProject
+    ? `Search query: "${data.query}" (Jira project: ${data.jiraProject})`
+    : `Search query: "${data.query}"`;
   container.appendChild(queryLine);
 
   const cols = document.createElement('div');

@@ -10,6 +10,20 @@ const CONFLUENCE_TOKEN = process.env.CONFLUENCE_TOKEN || '';
 const REQUEST_TIMEOUT_MS = 10 * 1000;
 const MAX_RESULTS = 5;
 
+// Maps the on-prem COP Version (extracted from the sanity log, e.g.
+// "2.5.8.1234" or "3.1.0.456") to the Jira project that owns issues for
+// that product line: version "2.x" is the classic on-prem COP product
+// (Jira project "Central"); version "3.x" is the newer CNX-based product
+// (Jira project "Central NextGen Experience"). Any other/unrecognized
+// version (or no version at all) leaves the search unfiltered by project.
+function resolveJiraProjectFilter(copVersion) {
+  if (!copVersion || typeof copVersion !== 'string') return null;
+  const major = copVersion.trim().split('.')[0];
+  if (major === '2') return 'Central';
+  if (major === '3') return 'Central NextGen Experience';
+  return null;
+}
+
 // Common English/log-noise words stripped out when tightening a query so the
 // JQL/CQL "text ~" search matches on the meaningful technical terms instead
 // of filler words.
@@ -81,11 +95,14 @@ function httpGetJson(urlStr, headers) {
   });
 }
 
-async function searchJira(query) {
+async function searchJira(query, projectFilter) {
   if (!JIRA_BASE_URL || !JIRA_TOKEN) {
     throw new Error('Jira is not configured (missing JIRA_BASE_URL/JIRA_TOKEN).');
   }
-  const jql = `text ~ "${query.replace(/"/g, '')}" ORDER BY updated DESC`;
+  const textClause = `text ~ "${query.replace(/"/g, '')}"`;
+  const jql = projectFilter
+    ? `project = "${projectFilter.replace(/"/g, '')}" AND ${textClause} ORDER BY updated DESC`
+    : `${textClause} ORDER BY updated DESC`;
   const url = `${JIRA_BASE_URL}/rest/api/2/search?jql=${encodeURIComponent(jql)}&maxResults=${MAX_RESULTS}&fields=summary,status,priority,updated`;
   const data = await httpGetJson(url, {
     Authorization: `Bearer ${JIRA_TOKEN}`,
@@ -124,15 +141,20 @@ async function searchConfluence(query) {
 
 // Runs the Jira and Confluence searches in parallel; each source fails
 // independently so a Confluence outage doesn't hide available Jira results
-// (and vice versa).
-async function lookupRelatedIssues(rcaText) {
+// (and vice versa). `copVersion` (the on-prem COP Version string, when
+// known) is used to scope the Jira search to the right project — see
+// resolveJiraProjectFilter above. Confluence search is intentionally left
+// unfiltered regardless of version (no space-key mapping is defined).
+async function lookupRelatedIssues(rcaText, copVersion) {
   const query = extractSearchQuery(rcaText);
   if (!query) {
     return { query: '', jira: [], confluence: [], errors: { general: 'Could not extract a search query from the RCA text.' } };
   }
 
+  const jiraProject = resolveJiraProjectFilter(copVersion);
+
   const [jiraResult, confluenceResult] = await Promise.allSettled([
-    searchJira(query),
+    searchJira(query, jiraProject),
     searchConfluence(query),
   ]);
 
@@ -142,10 +164,11 @@ async function lookupRelatedIssues(rcaText) {
 
   return {
     query,
+    jiraProject,
     jira: jiraResult.status === 'fulfilled' ? jiraResult.value : [],
     confluence: confluenceResult.status === 'fulfilled' ? confluenceResult.value : [],
     errors,
   };
 }
 
-module.exports = { lookupRelatedIssues, extractSearchQuery, searchJira, searchConfluence };
+module.exports = { lookupRelatedIssues, extractSearchQuery, searchJira, searchConfluence, resolveJiraProjectFilter };

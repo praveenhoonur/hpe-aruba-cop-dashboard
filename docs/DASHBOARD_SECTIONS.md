@@ -88,6 +88,20 @@ directory/file contents as tabs, with RCA (root-cause) pattern matches
 highlighted and optionally cross-referenced against Jira/Confluence via
 `POST /api/rca-lookup`.
 
+**Jira project targeting by COP version:** the archive's embedded
+`cop_sanity_logs*` file (if present) has its `COP Version` metric
+extracted and sent along with each RCA lookup request. The Jira search is
+then scoped to the matching project based on the version's major number:
+- Version starts with `2.` (classic on-prem COP) → Jira project `Central`.
+- Version starts with `3.` (CNX-based product) → Jira project
+  `Central NextGen Experience`.
+- Any other/unrecognized version, or no sanity log present → no project
+  filter (searches all of Jira, same as before).
+
+The resolved project (if any) is shown next to the search query in the
+lookup results. Confluence search is intentionally left unfiltered in all
+cases (no space-key mapping is defined).
+
 #### c. IVT Report
 Only populated when the upload contains file(s) with `ivt` in the file
 name. Parses and displays Install Verification Test results for the

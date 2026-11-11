@@ -113,9 +113,9 @@ app.post('/upload', (req, res) => {
       if (isArchiveFile(req.file.originalname)) {
         extractRoot = path.join(uploadDir, 'extracted', path.basename(req.file.path));
         await extractArchive(req.file.path, req.file.originalname, extractRoot);
-        const { sanityLogAnalysis, tabs, ivtReports, apiAnalysis } = analyzeExtractedArchive(extractRoot);
+        const { sanityLogAnalysis, tabs, ivtReports, apiAnalysis, copVersion } = analyzeExtractedArchive(extractRoot);
         analysis = sanityLogAnalysis;
-        archive = { tabs, ivtReports, apiAnalysis };
+        archive = { tabs, ivtReports, apiAnalysis, copVersion };
       } else {
         analysis = analyzeLogFile(req.file.path, req.file.originalname);
         // Not a cop_sanity_logs* file: fall back to type-specific analysis
@@ -179,14 +179,17 @@ app.post('/api/copilot-narrative', async (req, res) => {
 // "Likely Root Cause" section, and looks up similar issues/playbooks in
 // on-prem Jira and Confluence in parallel. Each source fails independently
 // so a partial result (e.g. Confluence unreachable) still returns Jira hits.
+// An optional `copVersion` (the on-prem COP Version detected from the
+// uploaded sanity log, when available) scopes the Jira search to the
+// matching project — see resolveJiraProjectFilter in rcaLookup.js.
 app.post('/api/rca-lookup', async (req, res) => {
-  const { rcaText } = req.body || {};
+  const { rcaText, copVersion } = req.body || {};
   if (!rcaText || typeof rcaText !== 'string') {
     return res.status(400).json({ success: false, message: 'Missing rcaText payload.' });
   }
 
   try {
-    const result = await lookupRelatedIssues(rcaText);
+    const result = await lookupRelatedIssues(rcaText, copVersion);
     res.json({ success: true, ...result });
   } catch (err) {
     console.error('RCA lookup failed:', err);

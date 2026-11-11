@@ -259,6 +259,16 @@ function analyzeExtractedArchive(extractRoot) {
     }
   }
 
+  // Pulled from the sanity log's own "COP Version" metric (already extracted
+  // by analyzer.js) so the RCA lookup widget can pick the right Jira project
+  // (COP "Central" vs. CNX) without re-parsing the file. The metric value
+  // may be suffixed with " (host X)" — strip that off to get the raw version.
+  let copVersion = null;
+  const versionMetric = sanityLogAnalysis?.summary?.metrics?.find((m) => m.label === 'COP Version');
+  if (versionMetric && versionMetric.value) {
+    copVersion = String(versionMetric.value).split(' (host')[0].trim();
+  }
+
   const apiAnalysis = analyzeHarFilesInArchive(allFiles);
 
   // The sanity log already has its own dedicated Cluster Health view, so
@@ -297,7 +307,7 @@ function analyzeExtractedArchive(extractRoot) {
     return a.name.localeCompare(b.name);
   });
 
-  return { sanityLogAnalysis, tabs, ivtReports, apiAnalysis };
+  return { sanityLogAnalysis, tabs, ivtReports, apiAnalysis, copVersion };
 }
 
 module.exports = { analyzeExtractedArchive };
